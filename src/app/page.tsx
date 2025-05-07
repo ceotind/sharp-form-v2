@@ -1,37 +1,61 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  addDoc, 
-  collection, 
-  doc, 
-  updateDoc, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  deleteDoc, 
-  setDoc 
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Form, FormField } from '@/types/form';
-import { FormBuilder } from '@/components/FormBuilder';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
+import { v4 as uuidv4 } from 'uuid';
+import { FormField } from '@/types/form';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { GripVertical, Pencil, Trash2, UserCircle } from 'lucide-react';
-import { SortableField } from '@/components/SortableField';
+import { FormBuilder } from '@/components/form-elements/FormBuilder';
+import { SortableField } from '@/components/form-elements/SortableField';
+import { Save, Plus, BarChart2 } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import FormBuilderLayout from '@/components/FormBuilderLayout';
-import { generateFormId } from '@/utils/generateFormId';
-import { getIpAddress } from '@/utils/getIpAddress';
+
+// Import form elements to register them
+import '@/components/form-elements/elements/TextInput';
+import '@/components/form-elements/elements/TextareaInput';
+import '@/components/form-elements/elements/SelectInput';
+import '@/components/form-elements/elements/CheckboxInput';
+import '@/components/form-elements/elements/RadioGroup';
+import '@/components/form-elements/elements/DateInput';
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  // Add your Firebase config here
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 export default function CreateFormPage() {
   const router = useRouter();
-  const [formTitle, setFormTitle] = useState('');
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [formTitle, setFormTitle] = useState('Untitled Form');
   const [formDescription, setFormDescription] = useState('');
   const [fields, setFields] = useState<FormField[]>([]);
-  const [editingField, setEditingField] = useState<FormField | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [editingField, setEditingField] = useState<FormField | null>(null);
+  const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+  const [forms, setForms] = useState<any[]>([]);
 
   // Theme state
   const [themeBackground, setThemeBackground] = useState('');
@@ -41,17 +65,11 @@ export default function CreateFormPage() {
   const [themeSaveMsg, setThemeSaveMsg] = useState('');
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
-
-  const [forms, setForms] = useState<(Form & { id: string })[]>([]);
-  const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
-
-  // New state for sidebar
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'forms'), orderBy('createdAt', 'desc'));
@@ -59,15 +77,15 @@ export default function CreateFormPage() {
       const formsList = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })) as (Form & { id: string })[];
+      }));
       setForms(formsList);
     });
     return () => unsubscribe();
   }, []);
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  // Handle drag and drop for fields
+  const handleDragEnd = (event: any) => {
     const { active, over } = event;
-
     if (over && active.id !== over.id) {
       setFields((items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id);
@@ -77,6 +95,17 @@ export default function CreateFormPage() {
     }
   };
 
+  // Handle field changes from FormBuilder
+  const handleFieldsChange = (newFields: FormField[]) => {
+    setFields(newFields);
+  };
+
+  // Handle field selection
+  const handleFieldSelect = (field: FormField) => {
+    setEditingField(field);
+  };
+
+  // Update field
   const handleFieldUpdate = (updatedField: FormField) => {
     setFields(prev => prev.map(field => 
       field.id === updatedField.id ? updatedField : field
@@ -84,6 +113,7 @@ export default function CreateFormPage() {
     setEditingField(null);
   };
 
+  // Publish form
   const handlePublish = async () => {
     if (!formTitle.trim()) {
       setError('Please enter a form title');
@@ -94,24 +124,18 @@ export default function CreateFormPage() {
     setError(null);
 
     try {
-      // Get IP address first and make sure we have it
-      const ipAddress = await getIpAddress();
-      if (!ipAddress || ipAddress === 'unknown') {
-        console.warn('Could not fetch IP address');
-      }
-      
-      const formId = generateFormId();
+      const formId = uuidv4();
 
       // Create form data with required fields
       const formData = {
         id: formId,
         title: formTitle.trim(),
         createdAt: new Date().toISOString(), // Use ISO string for consistent date format
-        ipAddress: ipAddress, // Store the IP address
+        ipAddress: '', // Placeholder, set actual IP if needed
         metadata: {  // Add metadata object for tracking
           lastModified: new Date().toISOString(),
           created: new Date().toISOString(),
-          creatorIp: ipAddress
+          creatorIp: ''
         },
         // Optional fields below
         description: formDescription.trim() || null,
@@ -126,15 +150,8 @@ export default function CreateFormPage() {
         }
       };
 
-      // Save to Firebase with explicit console logging
+      // Save to Firebase
       await setDoc(doc(db, 'forms', formId), formData);
-      
-      // Log to verify IP is being saved
-      console.log('Form created successfully:', {
-        formId,
-        ipAddress,
-        timestamp: formData.createdAt
-      });
       
       router.push(`/forms/${formId}`);
 
@@ -146,6 +163,7 @@ export default function CreateFormPage() {
     }
   };
 
+  // Save theme settings
   const handleThemeSave = async (formId: string) => {
     setThemeSaving(true);
     setThemeSaveMsg('');
@@ -216,90 +234,130 @@ export default function CreateFormPage() {
   };
 
   return (
-    <FormBuilderLayout
+    <FormBuilderLayout 
       forms={forms}
       onEditForm={handleEditForm}
       onDeleteForm={deleteForm}
     >
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex flex-col xl:flex-row gap-8">
-          {/* Preview Column - Takes 1/2 width */}
-          <div className="xl:w-1/2 order-2 xl:order-1">
-            <div className="sticky top-4">
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">Form Preview</h2>
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                      <h3 className="text-2xl font-bold text-gray-900">{formTitle || 'Untitled Form'}</h3>
-                      {formDescription && <p className="text-gray-500">{formDescription}</p>}
-                    </div>
-                    <div className="border-t border-gray-100 pt-6">
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleDragEnd}
-                      >
-                        <SortableContext items={fields} strategy={verticalListSortingStrategy}>
-                          <div className="space-y-4">
-                            {fields.map((field) => (
-                              <SortableField
-                                key={field.id}
-                                field={field}
-                                onEdit={() => setEditingField(field)}
-                                onRemove={() => setFields(prev => prev.filter(f => f.id !== field.id))}
-                              />
-                            ))}
-                          </div>
-                        </SortableContext>
-                      </DndContext>
-                    </div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="space-y-8">
+          {/* Form Preview Card */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h1 className="text-2xl font-bold">Form Preview</h1>
+              <div className="flex gap-2">
+                {selectedFormId && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push(`/forms/${selectedFormId}`)}
+                      className="gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                        <path d="M2 12s3-7.5 10-7.5 10 7.5 10 7.5-3 7.5-10 7.5-10-7.5-10-7.5z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                      View Form
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push(`/forms/${selectedFormId}/responses`)}
+                      className="gap-2"
+                    >
+                      <BarChart2 className="w-4 h-4" />
+                      View Responses
+                    </Button>
+                  </>
+                )}
+                <Button
+                  onClick={selectedFormId ? handleUpdateForm : handlePublish}
+                  disabled={isPublishing}
+                  className="gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  {isPublishing ? 'Saving...' : (selectedFormId ? 'Save Changes' : 'Publish Form')}
+                </Button>
+              </div>
+            </div>
+            <div className="p-8">
+              <div className="space-y-6">
+                <div className="bg-white p-8 rounded-lg border border-gray-200">
+                  <div className="space-y-4">
+                    <h3 className="text-2xl font-bold text-gray-900 break-words leading-tight">
+                      {formTitle || 'Untitled Form'}
+                    </h3>
+                    {formDescription && (
+                      <p className="text-gray-600 text-base break-words leading-relaxed">
+                        {formDescription}
+                      </p>
+                    )}
                   </div>
+                </div>
+                <div className="space-y-4">
+                  {fields.map((field) => (
+                    <SortableField
+                      key={field.id}
+                      field={field}
+                      isSelected={editingField?.id === field.id}
+                      onSelect={() => setEditingField(field)}
+                      onUpdate={(updates: Partial<FormField>) => handleFieldUpdate({ ...field, ...updates })}
+                      onDelete={() => setFields(prev => prev.filter(f => f.id !== field.id))}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Builder Column - Takes 1/2 width */}
-          <div className="xl:w-1/2 order-1 xl:order-2 space-y-6">
-            {/* Form Details Card */}
-            <div className="bg-white rounded-xl shadow-sm">
-              <div className="p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>Form Details</span>
-                  <span className="text-sm font-normal text-gray-500">(Step 1 of 3)</span>
-                </h2>
-                <div className="space-y-4 lg:space-y-6">
-                  <div className="space-y-2">
-                    <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                      Form Title <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      id="title"
-                      value={formTitle}
-                      onChange={(e) => setFormTitle(e.target.value)}
-                      className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                      placeholder="Enter your form title"
-                    />
-                    <p className="text-xs text-gray-500">This will be displayed as the heading of your form</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                      Form Description
-                    </label>
-                    <textarea
-                      id="description"
-                      value={formDescription}
-                      onChange={(e) => setFormDescription(e.target.value)}
-                      className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
-                      placeholder="Enter a description for your form"
-                      rows={4}
-                    />
-                    <p className="text-xs text-gray-500">Add context or instructions for form respondents</p>
-                  </div>
+          {/* Form Elements Section */}
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">Form Elements</h2>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                    Form Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="title"
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="Enter your form title"
+                  />
+                  <p className="text-xs text-gray-500">This will be displayed as the heading of your form</p>
                 </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                    Form Description
+                  </label>
+                  <textarea
+                    id="description"
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                    placeholder="Enter a description for your form"
+                    rows={3}
+                  />
+                  <p className="text-xs text-gray-500">Add context or instructions for form respondents</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Form Elements Grid */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">Add Form Elements</h2>
+              <FormBuilder
+                fields={[]}
+                onChange={() => {}}
+                onFieldSelect={handleFieldSelect}
+                selectedFieldId={editingField?.id}
+                className="p-4 bg-gray-50 rounded-lg"
+              />
+            </div>
+          </div>
 
                 {error && (
                   <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -412,21 +470,6 @@ export default function CreateFormPage() {
                       <span className="text-sm text-gray-500">Preview</span>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Form Elements Card */}
-            <div className="bg-white rounded-xl shadow-sm">
-              <div className="p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-6">Form Elements</h2>
-                <div className="border-t border-gray-200 pt-4 lg:pt-6">
-                  <FormBuilder 
-                    initialFields={fields} 
-                    onChange={setFields}
-                    editingField={editingField}
-                    onFieldUpdate={handleFieldUpdate}
-                  />
                 </div>
               </div>
             </div>

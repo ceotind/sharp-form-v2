@@ -1,14 +1,15 @@
 // Field Types
-export type FieldType = 'text' | 'textarea' | 'dropdown' | 'checkbox' | 'radio' | 'date';
+export type FieldType = 'text' | 'textarea' | 'dropdown' | 'checkbox' | 'radio' | 'date' | string;
 
 // Base field interface with common properties
-interface BaseField {
+export interface BaseField {
   id: string;
   type: FieldType;
   label: string;
-  required: boolean;
+  required?: boolean;
   placeholder?: string;
   helpText?: string;
+  [key: string]: any; // Allow for custom properties
 }
 
 // Text field interface
@@ -61,23 +62,22 @@ interface DateField extends BaseField {
 }
 
 // Union type for all field types
-export type FormField = 
-  | TextField 
-  | TextareaField 
-  | DropdownField 
-  | CheckboxField 
-  | RadioField 
-  | DateField;
+export type FormField = BaseField & {
+  [key: string]: any;
+};
 
 // Form interface
 export interface Form {
+  id?: string;
   title: string;
   description?: string;
   fields: FormField[];
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | any; // Allow Firestore timestamp
+  updatedAt: Date | any; // Allow Firestore timestamp
   published: boolean;
   createdBy: string;
+  responseCount?: number;
+  lastResponseAt?: Date | any;
   settings?: {
     allowMultipleResponses: boolean;
     customSuccessMessage: string;
@@ -90,14 +90,19 @@ export interface Form {
 
 // Form Response interface
 export interface FormResponse {
-  id: string;
+  id?: string;
   formId: string;
   responses: {
     fieldId: string;
-    value: string | string[] | boolean | Date;
+    value: string | string[] | boolean | Date | any;
   }[];
-  submittedAt: Date;
+  submittedAt: Date | any;
   submittedBy?: string;
+  metadata?: {
+    userAgent?: string;
+    timestamp?: any; // Firestore timestamp
+    [key: string]: any;
+  };
 }
 
 // Form Settings interface

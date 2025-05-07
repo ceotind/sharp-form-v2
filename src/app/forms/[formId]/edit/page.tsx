@@ -1,30 +1,50 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Form, FormField } from '@/types/form';
-import { FormBuilder } from '@/components/FormBuilder';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { SortableField } from '@/components/SortableField';
+import { FormBuilder } from '@/components/form-elements/FormBuilder';
+import { SortableField } from '@/components/form-elements/SortableField';
+import { ArrowLeft, Save, Settings, Eye, Share2, Trash2, Plus } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import FormBuilderLayout from '@/components/FormBuilderLayout';
+
+type DragEndEvent = {
+  active: { id: string };
+  over: { id: string } | null;
+};
 
 export default function EditFormPage({ params }: { params: { formId: string } }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [form, setForm] = useState<Form | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [formTitle, setFormTitle] = useState('');
-  const [formDescription, setFormDescription] = useState('');
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    isPublished: false,
+    requireAuth: false,
+  });
   const [fields, setFields] = useState<FormField[]>([]);
-  const [editingField, setEditingField] = useState<FormField | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [customSlug, setCustomSlug] = useState('');
+  const [activeTab, setActiveTab] = useState('builder');
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -35,6 +55,7 @@ export default function EditFormPage({ params }: { params: { formId: string } })
       try {
         const docRef = doc(db, 'forms', params.formId);
         const docSnap = await getDoc(docRef);
+
         
         if (docSnap.exists()) {
           const formData = docSnap.data() as Form;
