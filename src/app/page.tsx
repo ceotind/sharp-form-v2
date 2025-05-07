@@ -2,7 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { addDoc, collection, doc, updateDoc, query, orderBy, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { 
+  addDoc, 
+  collection, 
+  doc, 
+  updateDoc, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  deleteDoc, 
+  setDoc 
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Form, FormField } from '@/types/form';
 import { FormBuilder } from '@/components/FormBuilder';
@@ -10,6 +20,9 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { GripVertical, Pencil, Trash2, UserCircle } from 'lucide-react';
 import { SortableField } from '@/components/SortableField';
+import FormBuilderLayout from '@/components/FormBuilderLayout';
+import { generateFormId } from '@/utils/generateFormId';
+import { getIpAddress } from '@/utils/getIpAddress';
 
 export default function CreateFormPage() {
   const router = useRouter();
@@ -77,110 +90,67 @@ export default function CreateFormPage() {
       return;
     }
 
-    if (fields.length === 0) {
-      setError('Please add at least one field to your form');
-      return;
-    }
-
     setIsPublishing(true);
     setError(null);
 
     try {
-      // Verify Firebase is initialized
-      if (!db) {
-        throw new Error('Firebase is not initialized');
+      // Get IP address first and make sure we have it
+      const ipAddress = await getIpAddress();
+      if (!ipAddress || ipAddress === 'unknown') {
+        console.warn('Could not fetch IP address');
       }
+      
+      const formId = generateFormId();
 
-      // Clean up fields to remove undefined values
-      const cleanedFields = fields.map(field => {
-        const baseField = {
-          id: field.id,
-          type: field.type,
-          label: field.label,
-          required: field.required,
-          ...(field.placeholder && { placeholder: field.placeholder }),
-          ...(field.helpText && { helpText: field.helpText })
-        };
-
-        switch (field.type) {
-          case 'text':
-            return {
-              ...baseField,
-              ...(field.minLength && { minLength: field.minLength }),
-              ...(field.maxLength && { maxLength: field.maxLength }),
-              ...(field.pattern && { pattern: field.pattern })
-            };
-          case 'textarea':
-            return {
-              ...baseField,
-              ...(field.minLength && { minLength: field.minLength }),
-              ...(field.maxLength && { maxLength: field.maxLength }),
-              rows: field.rows || 3
-            };
-          case 'dropdown':
-            return {
-              ...baseField,
-              options: field.options || [],
-              multiple: field.multiple || false
-            };
-          case 'checkbox':
-            return {
-              ...baseField,
-              checked: field.checked || false
-            };
-          case 'radio':
-            return {
-              ...baseField,
-              options: field.options || []
-            };
-          case 'date':
-            return {
-              ...baseField,
-              ...(field.min && { min: field.min }),
-              ...(field.max && { max: field.max })
-            };
-          default:
-            return baseField;
-        }
-      });
-
+      // Create form data with required fields
       const formData = {
+        id: formId,
         title: formTitle.trim(),
-        ...(formDescription.trim() && { description: formDescription.trim() }),
-        fields: cleanedFields,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        published: true,
-        createdBy: 'anonymous', // TODO: Replace with actual user ID when auth is implemented
+        createdAt: new Date().toISOString(), // Use ISO string for consistent date format
+        ipAddress: ipAddress, // Store the IP address
+        metadata: {  // Add metadata object for tracking
+          lastModified: new Date().toISOString(),
+          created: new Date().toISOString(),
+          creatorIp: ipAddress
+        },
+        // Optional fields below
+        description: formDescription.trim() || null,
+        fields: fields.length > 0 ? fields : [],
         settings: {
           allowMultipleResponses: true,
           customSuccessMessage: 'Thank you for your submission!',
           customErrorMessage: 'There was an error submitting your form. Please try again.',
-          themeBackground,
-          textColor,
-          accentColor
+          themeBackground: themeBackground || '',
+          textColor: textColor || '',
+          accentColor: accentColor || ''
         }
       };
 
-      const docRef = await addDoc(collection(db, 'forms'), formData);
-      router.push(`/forms/${docRef.id}`);
+      // Save to Firebase with explicit console logging
+      await setDoc(doc(db, 'forms', formId), formData);
+      
+      // Log to verify IP is being saved
+      console.log('Form created successfully:', {
+        formId,
+        ipAddress,
+        timestamp: formData.createdAt
+      });
+      
+      router.push(`/forms/${formId}`);
+
     } catch (err) {
-      console.error('Error publishing form:', err);
-      if (err instanceof Error) {
-        setError(`Failed to publish form: ${err.message}`);
-      } else {
-        setError('Failed to publish form. Please check your Firebase configuration and try again.');
-      }
+      console.error('Error creating form:', err);
+      setError('Failed to create form. Please try again.');
     } finally {
       setIsPublishing(false);
     }
   };
 
-  const handleThemeSave = async () => {
+  const handleThemeSave = async (formId: string) => {
     setThemeSaving(true);
     setThemeSaveMsg('');
     try {
-      await updateDoc(doc(db, 'forms', docRef.id), {
+      await updateDoc(doc(db, 'forms', formId), {
         'settings.themeBackground': themeBackground,
         'settings.textColor': textColor,
         'settings.accentColor': accentColor,
@@ -212,247 +182,257 @@ export default function CreateFormPage() {
     }
   };
 
+  // New function to handle form updates
+  const handleUpdateForm = async () => {
+    if (!selectedFormId || !formTitle.trim()) {
+      setError('Please enter a form title');
+      return;
+    }
+
+    setIsPublishing(true);
+    setError(null);
+
+    try {
+      const formData = {
+        title: formTitle.trim(),
+        description: formDescription.trim() || '',
+        fields: fields,
+        updatedAt: new Date(),
+        settings: {
+          themeBackground,
+          textColor,
+          accentColor
+        }
+      };
+
+      await updateDoc(doc(db, 'forms', selectedFormId), formData);
+      router.push(`/forms/${selectedFormId}`);
+    } catch (err) {
+      console.error('Error updating form:', err);
+      setError('Failed to update form. Please try again.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <aside className={`fixed left-0 top-0 h-full w-72 bg-white border-r border-gray-200 shadow-lg flex flex-col z-20 transition-transform duration-300 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      }`}>
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">S</div>
-            <span className="font-bold text-xl text-gray-900">SharpForm</span>
+    <FormBuilderLayout
+      forms={forms}
+      onEditForm={handleEditForm}
+      onDeleteForm={deleteForm}
+    >
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex flex-col xl:flex-row gap-8">
+          {/* Preview Column - Takes 1/2 width */}
+          <div className="xl:w-1/2 order-2 xl:order-1">
+            <div className="sticky top-4">
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-6">Form Preview</h2>
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <h3 className="text-2xl font-bold text-gray-900">{formTitle || 'Untitled Form'}</h3>
+                      {formDescription && <p className="text-gray-500">{formDescription}</p>}
+                    </div>
+                    <div className="border-t border-gray-100 pt-6">
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
+                      >
+                        <SortableContext items={fields} strategy={verticalListSortingStrategy}>
+                          <div className="space-y-4">
+                            {fields.map((field) => (
+                              <SortableField
+                                key={field.id}
+                                field={field}
+                                onEdit={() => setEditingField(field)}
+                                onRemove={() => setFields(prev => prev.filter(f => f.id !== field.id))}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <nav className="flex-1 p-4 space-y-2">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 text-blue-700 font-medium transition-all hover:bg-blue-100">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0h6"/></svg>
-            Dashboard
-          </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 font-medium transition-all hover:bg-gray-50">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-            Forms
-          </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 font-medium transition-all hover:bg-gray-50">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M12 4h9"/><path d="M4 9h16"/><path d="M4 15h16"/></svg>
-            Settings
-          </button>
-        </nav>
-        {/* Your Forms Section */}
-        <div className="flex-1 overflow-y-auto px-4 pb-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 mt-2">Your Forms</h3>
-          {forms.length === 0 && <div className="text-gray-400 text-sm">No forms yet</div>}
-          <ul className="space-y-1">
-            {forms.map(form => (
-              <li key={form.id} className="flex items-center justify-between group bg-gray-50 hover:bg-blue-50 rounded-lg px-3 py-2 transition">
-                <div className="flex-1 min-w-0">
-                  <span className="block truncate text-sm font-medium text-gray-900">{form.title || 'Untitled'}</span>
-                  <span className="block truncate text-xs text-gray-500">{form.description || 'No description'}</span>
-                </div>
-                <div className="flex items-center gap-1 ml-2 opacity-80 group-hover:opacity-100">
-                  {/* View Icon */}
-                  <button title="View" onClick={() => router.push(`/forms/${form.id}`)} className="p-1 hover:bg-blue-100 rounded">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1.5 12s4-7 10.5-7 10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>
-                  </button>
-                  {/* Edit Icon */}
-                  <button 
-                    title="Edit" 
-                    onClick={() => handleEditForm(form.id)} 
-                    className="p-1 hover:bg-yellow-100 rounded"
-                  >
-                    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19.5 3 21l1.5-4L16.5 3.5z"/>
-                    </svg>
-                  </button>
-                  {/* Delete Icon */}
-                  <button title="Delete" onClick={async () => { await deleteForm(form.id); }} className="p-1 hover:bg-red-100 rounded">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/></svg>
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="p-4 border-t border-gray-200">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 font-medium transition-all hover:bg-gray-50">
-            <UserCircle className="w-6 h-6" />
-            <span>Log Out</span>
-          </button>
-        </div>
-      </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 ml-0">
-        {/* Mobile menu button */}
-        <button 
-          className="lg:hidden fixed top-4 left-4 z-30 p-2 rounded-lg bg-white shadow-lg"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-        >
-          <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M4 6h16M4 12h16M4 18h16"/>
-          </svg>
-        </button>
+          {/* Builder Column - Takes 1/2 width */}
+          <div className="xl:w-1/2 order-1 xl:order-2 space-y-6">
+            {/* Form Details Card */}
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                  <span>Form Details</span>
+                  <span className="text-sm font-normal text-gray-500">(Step 1 of 3)</span>
+                </h2>
+                <div className="space-y-4 lg:space-y-6">
+                  <div className="space-y-2">
+                    <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                      Form Title <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="title"
+                      value={formTitle}
+                      onChange={(e) => setFormTitle(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      placeholder="Enter your form title"
+                    />
+                    <p className="text-xs text-gray-500">This will be displayed as the heading of your form</p>
+                  </div>
 
-        {/* Main content with 2 equal columns */}
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex flex-col xl:flex-row gap-8">
-            {/* Preview Column - Takes 1/2 width */}
-            <div className="xl:w-1/2 order-2 xl:order-1">
-              <div className="sticky top-4">
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                  <div className="p-6">
-                    <h2 className="text-xl font-bold text-gray-900 mb-6">Form Preview</h2>
-                    <div className="space-y-6">
-                      <div className="space-y-2">
-                        <h3 className="text-2xl font-bold text-gray-900">{formTitle || 'Untitled Form'}</h3>
-                        {formDescription && <p className="text-gray-500">{formDescription}</p>}
-                      </div>
-                      <div className="border-t border-gray-100 pt-6">
-                        <DndContext
-                          sensors={sensors}
-                          collisionDetection={closestCenter}
-                          onDragEnd={handleDragEnd}
-                        >
-                          <SortableContext items={fields} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-4">
-                              {fields.map((field) => (
-                                <SortableField
-                                  key={field.id}
-                                  field={field}
-                                  onEdit={() => setEditingField(field)}
-                                  onRemove={() => setFields(prev => prev.filter(f => f.id !== field.id))}
-                                />
-                              ))}
-                            </div>
-                          </SortableContext>
-                        </DndContext>
-                      </div>
+                  <div className="space-y-2">
+                    <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                      Form Description
+                    </label>
+                    <textarea
+                      id="description"
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                      placeholder="Enter a description for your form"
+                      rows={4}
+                    />
+                    <p className="text-xs text-gray-500">Add context or instructions for form respondents</p>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-600 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {error}
+                    </p>
+                  </div>
+                )}
+
+                {/* Form Details Card button section */}
+                <div className="mt-6 space-y-4">
+                  {selectedFormId ? (
+                    // Edit mode - Show Save Changes and Delete buttons
+                    <div className="flex gap-4">
+                      <button
+                        onClick={handleUpdateForm}
+                        disabled={isPublishing}
+                        className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg shadow-lg hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        {isPublishing ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Saving Changes...
+                          </span>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
+                            deleteForm(selectedFormId).then(() => {
+                              router.push('/');
+                            }).catch((err) => {
+                              setError('Failed to delete form. Please try again.');
+                            });
+                          }
+                        }}
+                        className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all"
+                      >
+                        Delete Form
+                      </button>
+                    </div>
+                  ) : (
+                    // Create mode - Show Publish button
+                    <button
+                      onClick={handlePublish}
+                      disabled={isPublishing}
+                      className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg shadow-lg hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {isPublishing ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Publishing Form...
+                        </span>
+                      ) : (
+                        'Publish Form'
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Theme Settings Card */}
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-6">Theme Settings</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Background</label>
+                    <input
+                      type="text"
+                      value={themeBackground}
+                      onChange={e => setThemeBackground(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      placeholder="e.g. #1e2761"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Text Color</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={textColor}
+                        onChange={e => setTextColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer"
+                      />
+                      <span className="text-sm text-gray-500">Preview</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={accentColor}
+                        onChange={e => setAccentColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer"
+                      />
+                      <span className="text-sm text-gray-500">Preview</span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Builder Column - Takes 1/2 width */}
-            <div className="xl:w-1/2 order-1 xl:order-2 space-y-6">
-              {/* Form Details Card */}
-              <div className="bg-white rounded-xl shadow-sm">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">Form Details</h2>
-                  <div className="space-y-4 lg:space-y-6">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        id="title"
-                        value={formTitle}
-                        onChange={(e) => setFormTitle(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="Form Title"
-                      />
-                      <label htmlFor="title" className="block text-sm font-medium text-gray-700 mt-2">
-                        Form Title <span className="text-red-500">*</span>
-                      </label>
-                    </div>
-                    <div className="relative">
-                      <textarea
-                        id="description"
-                        value={formDescription}
-                        onChange={(e) => setFormDescription(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
-                        placeholder="Form Description"
-                        rows={3}
-                      />
-                      <label htmlFor="description" className="block text-sm font-medium text-gray-700 mt-2">
-                        Form Description
-                      </label>
-                    </div>
-                  </div>
-                  {error && (
-                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                      <p className="text-sm text-red-600">{error}</p>
-                    </div>
-                  )}
-                  <button
-                    onClick={handlePublish}
-                    disabled={isPublishing}
-                    className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl shadow-lg hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {isPublishing ? (
-                      <span className="flex items-center justify-center">
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Publishing...
-                      </span>
-                    ) : (
-                      'Publish Form'
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Theme Settings Card */}
-              <div className="bg-white rounded-xl shadow-sm">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">Theme Settings</h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Background</label>
-                      <input
-                        type="text"
-                        value={themeBackground}
-                        onChange={e => setThemeBackground(e.target.value)}
-                        className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="e.g. #1e2761"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Text Color</label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="color"
-                          value={textColor}
-                          onChange={e => setTextColor(e.target.value)}
-                          className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer"
-                        />
-                        <span className="text-sm text-gray-500">Preview</span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="color"
-                          value={accentColor}
-                          onChange={e => setAccentColor(e.target.value)}
-                          className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer"
-                        />
-                        <span className="text-sm text-gray-500">Preview</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Form Elements Card */}
-              <div className="bg-white rounded-xl shadow-sm">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">Form Elements</h2>
-                  <div className="border-t border-gray-200 pt-4 lg:pt-6">
-                    <FormBuilder 
-                      initialFields={fields} 
-                      onChange={setFields}
-                      editingField={editingField}
-                      onFieldUpdate={handleFieldUpdate}
-                    />
-                  </div>
+            {/* Form Elements Card */}
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-6">Form Elements</h2>
+                <div className="border-t border-gray-200 pt-4 lg:pt-6">
+                  <FormBuilder 
+                    initialFields={fields} 
+                    onChange={setFields}
+                    editingField={editingField}
+                    onFieldUpdate={handleFieldUpdate}
+                  />
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </FormBuilderLayout>
   );
 }

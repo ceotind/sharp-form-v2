@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, query, orderBy, onSnapshot, deleteDoc, doc, addDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import { Form } from '@/types/form';
 import Link from 'next/link';
-import { Edit2, Eye, Trash2 } from 'lucide-react';
+import { Edit2, Eye, Trash2, Plus, LogOut, LogIn } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export function FormsSidebar() {
@@ -13,7 +13,7 @@ export function FormsSidebar() {
   const [forms, setForms] = useState<(Form & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
+  
   useEffect(() => {
     const q = query(collection(db, 'forms'), orderBy('createdAt', 'desc'));
     
@@ -50,6 +50,41 @@ export function FormsSidebar() {
     }
   };
 
+  const handleSignOut = () => {
+    // Will implement later
+    console.log('Sign out clicked');
+  };
+
+  const handleSignIn = () => {
+    // Will implement later
+    console.log('Sign in clicked');
+  };
+
+  const handleCreateNewForm = async () => {
+    try {
+      const newFormData: Form = {
+        title: 'Untitled Form',
+        description: '',
+        fields: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        published: false,
+        createdBy: 'anonymous', // TODO: Replace with actual user ID when auth is implemented
+        settings: {
+          allowMultipleResponses: true,
+          customSuccessMessage: 'Thank you for your submission!',
+          customErrorMessage: 'There was an error submitting your form. Please try again.',
+        }
+      };
+
+      const docRef = await addDoc(collection(db, 'forms'), newFormData);
+      router.push(`/forms/${docRef.id}/edit`);
+    } catch (error) {
+      console.error('Error creating new form:', error);
+      alert('Failed to create new form. Please try again.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="w-64 bg-white border-r border-gray-200 p-4">
@@ -65,7 +100,30 @@ export function FormsSidebar() {
 
   return (
     <div className="w-64 bg-white border-r border-gray-200 p-4 overflow-y-auto">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Saved Forms</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-semibold text-gray-900">Saved Forms</h2>
+        <button
+          onClick={handleCreateNewForm}
+          className="p-2 text-blue-600 hover:text-blue-700 rounded-full hover:bg-blue-50"
+          title="Create new form"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Auth buttons */}
+      <div className="mb-4">
+        <div className="flex flex-col space-y-2">
+          <button
+            onClick={handleSignIn}
+            className="flex items-center justify-center text-sm text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 w-full"
+          >
+            <LogIn className="w-4 h-4 mr-2" />
+            Sign In
+          </button>
+        </div>
+      </div>
+
       <div className="space-y-4">
         {forms.map((form) => (
           <div
@@ -117,4 +175,4 @@ export function FormsSidebar() {
       </div>
     </div>
   );
-} 
+}
