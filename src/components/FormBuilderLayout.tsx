@@ -15,14 +15,14 @@ interface FormBuilderLayoutProps {
   onDeleteForm?: (formId: string) => void;
 }
 
-export default function FormBuilderLayout({ 
+const FormBuilderLayout = ({ 
   children, 
   className,
   showSidebar = true,
   forms = [],
   onEditForm,
   onDeleteForm
-}: FormBuilderLayoutProps) {
+}: FormBuilderLayoutProps) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b bg-white">
@@ -114,3 +114,5 @@ export default function FormBuilderLayout({
     </div>
   );
 }
+
+export default FormBuilderLayout;
