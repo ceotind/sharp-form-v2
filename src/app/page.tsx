@@ -56,8 +56,13 @@ const app = initializeApp(firebaseConfig);
 
 // Helper to generate a share link
 const generateShareLink = (formId: string): string => {
+  // Create an absolute URL that works across different browsers and sessions
+  const baseUrl = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    
   // This will be the public-facing URL for filling forms
-  return `${window.location.origin}/forms/${formId}/view`;
+  return `${baseUrl}/forms/${formId}`;
 };
 
 // Helper to get response count badge color

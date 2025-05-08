@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, FORMS_COLLECTION, RESPONSES_COLLECTION } from '@/lib/firebase';
 import { Form, FormResponse } from '@/types/form';
 import { FormPreview } from '@/components/FormPreview';
 
@@ -21,19 +21,29 @@ export default function PublishedFormPage({ params }: { params: { formId: string
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchForm = async () => {
       try {
-        const formDoc = await getDoc(doc(db, 'forms', params.formId));
-        if (formDoc.exists()) {
+        const formDoc = await getDoc(doc(db, FORMS_COLLECTION, params.formId));
+        if (formDoc.exists() && isMounted) {
           setForm(formDoc.data() as Form);
         }
       } catch (err) {
         console.error('Error fetching form:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
+    
     fetchForm();
+    
+    // Cleanup function to prevent state updates after unmounting
+    return () => {
+      isMounted = false;
+    };
   }, [params.formId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,11 +77,11 @@ export default function PublishedFormPage({ params }: { params: { formId: string
       };
 
       // Save to Firestore
-      const responsesCollection = collection(db, 'forms', params.formId, 'responses');
+      const responsesCollection = collection(db, FORMS_COLLECTION, params.formId, 'responses');
       await addDoc(responsesCollection, responseData);
       
       // Update form stats
-      const formRef = doc(db, 'forms', params.formId);
+      const formRef = doc(db, FORMS_COLLECTION, params.formId);
       await setDoc(formRef, {
         responseCount: (form?.responseCount || 0) + 1,
         lastResponseAt: serverTimestamp()
@@ -89,14 +99,30 @@ export default function PublishedFormPage({ params }: { params: { formId: string
     }
   };
 
-  const theme = {
+  // Use useMemo to prevent theme recalculation on every render
+  const theme = useMemo(() => ({
     background: form?.settings?.themeBackground || DEFAULT_THEME.background,
     textColor: form?.settings?.textColor || DEFAULT_THEME.textColor,
     accentColor: form?.settings?.accentColor || DEFAULT_THEME.accentColor,
-  };
+  }), [form?.settings?.themeBackground, form?.settings?.textColor, form?.settings?.accentColor]);
 
+  // Show loading state to prevent hydration errors
+  if (typeof window === 'undefined') {
+    // Server-side rendering - return minimal loading UI
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
+        <div className="p-8 text-center">Loading form...</div>
+      </div>
+    );
+  }
+  
+  // Client-side - only render when data is available
   if (loading || !form) {
-    return null;
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
+        <div className="p-8 text-center">Loading form...</div>
+      </div>
+    );
   }
 
   return (
