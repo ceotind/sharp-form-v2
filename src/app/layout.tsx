@@ -1,5 +1,6 @@
 import { Inter } from 'next/font/google';
 import './globals.css';  // Keep it here only
+import { Inter } from 'next/font/google';
 import { Toaster } from "@/components/ui/toaster"
 import { SonnerToaster } from "@/components/ui/sonner-toast"
 
