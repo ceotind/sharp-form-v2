@@ -24,7 +24,7 @@ export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorPr
       if (editedField.options.length === 0) {
         newErrors.options = 'At least one option is required';
       } else {
-        editedField.options.forEach((option, index) => {
+        editedField.options.forEach((option: { label: string; value: string; id: string }, index: number) => {
           if (!option.label.trim()) {
             newErrors[`option-${index}-label`] = 'Option label is required';
           }
@@ -77,7 +77,7 @@ export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorPr
 
   const removeOption = (index: number) => {
     if ('options' in editedField) {
-      const newOptions = editedField.options.filter((_, i) => i !== index);
+      const newOptions = editedField.options.filter((_: any, i: number) => i !== index);
       setEditedField(prev => ({ ...prev, options: newOptions }));
     }
   };
@@ -177,7 +177,7 @@ export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorPr
                 <p className="text-sm text-red-600 bg-red-50 p-2 rounded-lg">{errors.options}</p>
               )}
               <div className="space-y-3">
-                {editedField.options.map((option, index) => (
+                {editedField.options.map((option: { label: string; value: string; id: string }, index: number) => (
                   <div key={option.id} className="flex gap-3 items-start p-3 bg-gray-50 rounded-lg">
                     <div className="flex-1">
                       <input

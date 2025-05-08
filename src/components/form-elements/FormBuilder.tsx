@@ -8,20 +8,26 @@ import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface FormBuilderProps {
   fields?: FormField[];
+  initialFields?: FormField[];
   onChange?: (fields: FormField[]) => void;
   onFieldSelect?: (field: FormField) => void;
   selectedFieldId?: string | null;
+  editingField?: FormField | null;
+  onFieldUpdate?: (updatedField: FormField) => void;
   className?: string;
 }
 
 export const FormBuilder: React.FC<FormBuilderProps> = ({
   fields: externalFields = [],
+  initialFields = [],
   onChange,
   onFieldSelect,
   selectedFieldId,
+  editingField = null,
+  onFieldUpdate,
   className = '',
 }) => {
-  const [fields, setFields] = useState<FormField[]>(externalFields);
+  const [fields, setFields] = useState<FormField[]>(initialFields.length > 0 ? initialFields : externalFields);
   const [availableElements] = useState(() => formElementRegistry.getAll());
 
   const sensors = useSensors(

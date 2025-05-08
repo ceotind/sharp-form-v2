@@ -19,9 +19,11 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import FormBuilderLayout from '@/components/FormBuilderLayout';
 
+import { DragEndEvent as DndDragEndEvent } from '@dnd-kit/core';
+
 type DragEndEvent = {
-  active: { id: string };
-  over: { id: string } | null;
+  active: { id: string | number };
+  over: { id: string | number } | null;
 };
 
 export default function EditFormPage({ params }: { params: { formId: string } }) {
@@ -29,11 +31,17 @@ export default function EditFormPage({ params }: { params: { formId: string } })
   const { toast } = useToast();
   const [form, setForm] = useState<Form | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [formTitle, setFormTitle] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [customSlug, setCustomSlug] = useState('');
+  const [editingField, setEditingField] = useState<FormField | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     isPublished: false,
     requireAuth: false,
+    customSlug: '',
   });
   const [fields, setFields] = useState<FormField[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -184,8 +192,22 @@ export default function EditFormPage({ params }: { params: { formId: string } })
                               <SortableField
                                 key={field.id}
                                 field={field}
-                                onEdit={() => setEditingField(field)}
-                                onRemove={() => setFields(prev => prev.filter(f => f.id !== field.id))}
+                                isSelected={editingField?.id === field.id}
+                                onSelect={() => setEditingField(field)}
+                                onUpdate={(updates) => {
+                                  const updatedFields = fields.map(f => 
+                                    f.id === field.id ? { ...f, ...updates } : f
+                                  );
+                                  setFields(updatedFields);
+                                }}
+                                onDelete={() => {
+                                  setFields(prev => prev.filter(f => f.id !== field.id));
+                                  toast({
+                                    title: "Field removed",
+                                    description: `${field.type.charAt(0).toUpperCase() + field.type.slice(1)} field has been removed`,
+                                    variant: "default"
+                                  });
+                                }}
                               />
                             ))}
                           </div>

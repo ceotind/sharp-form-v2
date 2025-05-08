@@ -1,5 +1,3 @@
-import { FormField } from '@/types/form';
-
 interface FieldRendererProps {
   field: FormField;
   value?: string | string[] | boolean | Date;

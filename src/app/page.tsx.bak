@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { doc, setDoc, serverTimestamp, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
-import { db, FORMS_COLLECTION, RESPONSES_COLLECTION } from '@/lib/firebase';
 import { v4 as uuidv4 } from 'uuid';
 import { FormField, Form } from '@/types/form';
 import { Button } from '@/components/ui/button';
@@ -52,7 +51,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-// Firebase DB is imported from lib/firebase
+const db = getFirestore(app);
 
 // Helper to generate a share link
 const generateShareLink = (formId: string): string => {
@@ -130,8 +129,6 @@ export default function CreateFormPage() {
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeSaveMsg, setThemeSaveMsg] = useState('');
 
-  const user = { id: 'anonymous' }; // Anonymous user since auth will be implemented in future phases
-
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -140,7 +137,7 @@ export default function CreateFormPage() {
   );
 
   useEffect(() => {
-    const q = query(collection(db, FORMS_COLLECTION), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'forms'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const formsList = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -247,7 +244,7 @@ export default function CreateFormPage() {
       };
 
       // Save to Firebase
-      await setDoc(doc(db, FORMS_COLLECTION, formId), formData);
+      await setDoc(doc(db, 'forms', formId), formData);
       
       toast({
         title: "Form published!", 
@@ -275,7 +272,7 @@ export default function CreateFormPage() {
     setThemeSaving(true);
     setThemeSaveMsg('');
     try {
-      await updateDoc(doc(db, FORMS_COLLECTION, formId), {
+      await updateDoc(doc(db, 'forms', formId), {
         'settings.themeBackground': themeBackground,
         'settings.textColor': textColor,
         'settings.accentColor': accentColor,
@@ -290,7 +287,7 @@ export default function CreateFormPage() {
 
   async function deleteForm(id: string) {
     try {
-      await deleteDoc(doc(db, FORMS_COLLECTION, id));
+      await deleteDoc(doc(db, 'forms', id));
       toast({
         title: "Form deleted",
         description: "The form has been permanently deleted",
@@ -354,7 +351,7 @@ export default function CreateFormPage() {
         }
       };
 
-      await updateDoc(doc(db, FORMS_COLLECTION, selectedFormId), formData);
+      await updateDoc(doc(db, 'forms', selectedFormId), formData);
       
       toast({
         title: "Form updated", 
@@ -526,32 +523,23 @@ export default function CreateFormPage() {
                   </>
                 )}
                 {selectedFormId && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={handleUpdateForm}
-                      disabled={isPublishing}
-                      className="gap-2 bg-[#0f51dd] hover:bg-[#0a3eaf] text-white"
-                      size="sm"
-                    >
-                      <Save className="w-4 h-4" />
-                      <span className="hidden md:inline">Save</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (window.confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
-                          deleteForm(selectedFormId);
-                          router.push('/');
-                        }
-                      }}
-                      className="gap-2 text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600"
-                      size="sm"
-                    >
-                      <Trash className="w-4 h-4" />
-                      <span className="hidden md:inline">Delete</span>
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleUpdateForm}
+                    disabled={isPublishing}
+                    className="gap-2 bg-[#0f51dd] hover:bg-[#0a3eaf] text-white"
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
+                        deleteForm(selectedFormId);
+                        router.push('/');
+                      }
+                    }}
+                    className="gap-2 text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600"
+                    size="sm"
+                  >
+                    <Trash className="w-4 h-4" />
+                    <span className="hidden md:inline">Delete</span>
+                  </Button>
                 )}
                 <Button
                   onClick={selectedFormId ? handleUpdateForm : handlePublish}
@@ -700,116 +688,36 @@ export default function CreateFormPage() {
               
               {/* Right Column - Form Settings */}
               <div className="space-y-6">
-                {/* Properties and Theme Row - Side by side layout */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                  {/* Form Properties Card */}
-                  <Card className="h-full shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                        <Settings className="h-4 w-4 md:h-5 md:w-5 text-[#0f51dd]" /> 
-                        Form Properties
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div>
-                          <Label htmlFor="form-name" className="text-xs md:text-sm font-medium">Form Name</Label>
-                          <Input 
-                            id="form-name" 
-                            value={formTitle}
-                            onChange={(e) => setFormTitle(e.target.value)}
-                            className="mt-1 h-9 text-sm md:text-base"
-                            placeholder="Enter form title"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="form-description" className="text-xs md:text-sm font-medium">Description</Label>
-                          <Input 
-                            id="form-description" 
-                            value={formDescription}
-                            onChange={(e) => setFormDescription(e.target.value)}
-                            className="mt-1 h-9 text-sm md:text-base"
-                            placeholder="Enter form description"
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  
-                  {/* Form Theme Card - Moved from below */}
-                  <Card id="form-theme-section" className="h-full shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                        <SlidersHorizontal className="h-4 w-4 md:h-5 md:w-5 text-[#0f51dd]" /> 
-                        Form Theme
-                      </CardTitle>
-                      <CardDescription className="text-xs md:text-sm">Customize your form appearance</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-xs md:text-sm font-medium">Background</Label>
-                            <div className="flex gap-2">
-                              <input
-                                type="color"
-                                value={themeBackground || '#ffffff'}
-                                onChange={e => setThemeBackground(e.target.value)}
-                                className="w-8 h-8 rounded-md border border-gray-200 cursor-pointer"
-                              />
-                              <Input
-                                type="text"
-                                value={themeBackground || '#ffffff'}
-                                onChange={e => setThemeBackground(e.target.value)}
-                                className="flex-1 h-8 text-xs md:text-sm"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-xs md:text-sm font-medium">Accent Color</Label>
-                            <div className="flex gap-2">
-                              <input
-                                type="color"
-                                value={accentColor || '#0f51dd'}
-                                onChange={e => setAccentColor(e.target.value)}
-                                className="w-8 h-8 rounded-md border border-gray-200 cursor-pointer"
-                              />
-                              <Input
-                                type="text"
-                                value={accentColor || '#0f51dd'}
-                                onChange={e => setAccentColor(e.target.value)}
-                                className="flex-1 h-8 text-xs md:text-sm"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <Button 
-                          variant="outline" 
+                {/* Properties and Theme Row */}
+                <div className="space-y-4">
+                  {fields.length > 0 ? fields.map((field) => (
+                    <SortableField
+                      key={field.id}
+                      field={field}
+                      isSelected={editingField?.id === field.id}
+                      onSelect={() => setEditingField(field)}
+                      onUpdate={(updates: Partial<FormField>) => handleFieldUpdate({ ...field, ...updates })}
+                      onDelete={() => {
+                        setFields(prev => prev.filter(f => f.id !== field.id));
+                        sonnerToast.info(`Field removed`, {
+                          description: `${field.type.charAt(0).toUpperCase() + field.type.slice(1)} field has been removed`,
+                          className: "bg-white border-red-200 border-l-4",
+                          position: "top-right"
+                        });
+                      }}
+                    />
+                  )) : (
+                    <div className="text-center py-10 text-gray-500 border border-dashed border-gray-200 rounded-lg bg-gray-50">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <FileText className="h-8 w-8 text-gray-400" />
+                        <p className="font-medium">No form elements added yet</p>
+                        <p className="text-sm">Use the form elements panel to add fields</p>
+                        <Button
+                          variant="outline"
                           size="sm"
-                          onClick={() => {
-                            if (selectedFormId) {
-                              handleThemeSave(selectedFormId);
-                            } else {
-                              toast({
-                                title: "Save form first",
-                                description: "Please save your form before applying theme changes"
-                              });
-                            }
-                          }}
-                          className="mt-2 text-xs md:text-sm h-8 md:h-9"
-                        >
-                          Apply Theme
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Form Elements Card */}
-                <Card className="mt-6">
-                  <CardHeader>
-                    <CardTitle>Form Elements</CardTitle>
-                    <CardDescription>Drag and drop elements to build your form</CardDescription>
+                          onClick={() => document.getElementById('form-elements-section')?.scrollIntoView({ behavior: 'smooth' })}
+                          className="mt-2"
+                <CardDescription>Drag and drop elements to build your form</CardDescription>
               </CardHeader>
               <CardContent>
                 <div id="form-elements-section">
@@ -1263,7 +1171,165 @@ export default function CreateFormPage() {
               </CardContent>
             </Card>
 
-                {/* This section is intentionally empty as we've moved the Form Theme card to the top */}
+                {/* Theme Settings Card */}
+                <Card id="form-theme-section">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-muted-foreground" /> Form Theme
+                </CardTitle>
+                <CardDescription>Customize the appearance of your form</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                    <div className="space-y-2">
+                      <Label className="font-medium">Background</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="text"
+                          value={themeBackground}
+                          onChange={e => setThemeBackground(e.target.value)}
+                          className="w-full"
+                          placeholder="e.g. #1e2761 or linear-gradient(...)"
+                        />
+                        <Button 
+                          variant="outline" 
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => setThemeBackground('#f8fafc')}
+                          title="Reset to default"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="flex gap-2 mt-1">
+                        {['#ffffff', '#f1f5f9', '#e0f2fe', '#f0fdf4', '#fef2f2'].map(color => (
+                          <Button 
+                            key={color}
+                            variant="outline" 
+                            size="icon"
+                            className="h-6 w-6 p-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                            onClick={() => setThemeBackground(color)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-medium">Text Color</Label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="color"
+                          value={textColor}
+                          onChange={e => setTextColor(e.target.value)}
+                          className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer"
+                        />
+                        <div 
+                          className="w-8 h-8 rounded-full border shadow-sm" 
+                          style={{ backgroundColor: textColor || '#000000' }}
+                        ></div>
+                      </div>
+                      <div className="flex gap-2 mt-1">
+                        {['#000000', '#334155', '#1e40af', '#047857', '#b91c1c'].map(color => (
+                          <Button 
+                            key={color}
+                            variant="outline" 
+                            size="icon"
+                            className="h-6 w-6 p-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                            onClick={() => setTextColor(color)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-medium">Accent Color</Label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="color"
+                          value={accentColor}
+                          onChange={e => setAccentColor(e.target.value)}
+                          className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer"
+                        />
+                        <div 
+                          className="w-8 h-8 rounded-full border shadow-sm" 
+                          style={{ backgroundColor: accentColor || '#3b82f6' }}
+                        ></div>
+                      </div>
+                      <div className="flex gap-2 mt-1">
+                        {['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'].map(color => (
+                          <Button 
+                            key={color}
+                            variant="outline" 
+                            size="icon"
+                            className="h-6 w-6 p-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                            onClick={() => setAccentColor(color)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="text-sm font-medium flex items-center gap-1.5">
+                          <FileText className="h-3.5 w-3.5" /> Theme Preview
+                        </h4>
+                        <p className="text-xs text-gray-500">How your form's colors will appear to users</p>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          if (selectedFormId) {
+                            handleThemeSave(selectedFormId);
+                          } else {
+                            toast({
+                              title: "Save form first",
+                              description: "Please save your form before applying theme changes"
+                            });
+                          }
+                        }}
+                        disabled={themeSaving}
+                        className="gap-1.5"
+                      >
+                        {themeSaving ? (
+                          <>
+                            <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg> Applying...
+                          </>
+                        ) : 'Apply Theme'}
+                      </Button>
+                    </div>
+                    <div className="mt-3 rounded-md overflow-hidden border shadow-sm">
+                      <div 
+                        className="p-3" 
+                        style={{ 
+                          backgroundColor: themeBackground || 'white',
+                          color: textColor || 'black'
+                        }}
+                      >
+                        <p className="text-sm font-medium">Form Header</p>
+                        <p className="text-xs">Form description text</p>
+                      </div>
+                      <div className="bg-white border-t p-3">
+                        <Button 
+                          size="sm"
+                          className="mt-2"
+                          style={{ backgroundColor: accentColor || '#3b82f6' }}
+                        >
+                          Submit Button
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+                </Card>
               </div>
             </div>
             

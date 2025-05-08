@@ -14,4 +14,8 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
-export { app, db }; 
+// Create collections path constants for forms and responses
+const FORMS_COLLECTION = 'forms';
+const RESPONSES_COLLECTION = 'form-responses';
+
+export { app, db, FORMS_COLLECTION, RESPONSES_COLLECTION };

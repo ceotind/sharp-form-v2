@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, addDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { db, FORMS_COLLECTION } from '@/lib/firebase';
 import { Form } from '@/types/form';
 import Link from 'next/link';
-import { Edit2, Eye, Trash2, Plus, LogOut, LogIn } from 'lucide-react';
+import { Edit2, Eye, Trash2, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export function FormsSidebar() {
@@ -15,7 +15,7 @@ export function FormsSidebar() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   
   useEffect(() => {
-    const q = query(collection(db, 'forms'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, FORMS_COLLECTION), orderBy('createdAt', 'desc'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const formsList = snapshot.docs.map(doc => ({
@@ -37,7 +37,7 @@ export function FormsSidebar() {
 
     setDeletingId(formId);
     try {
-      await deleteDoc(doc(db, 'forms', formId));
+      await deleteDoc(doc(db, FORMS_COLLECTION, formId));
       // If we're currently on the deleted form's page, redirect to home
       if (window.location.pathname.includes(formId)) {
         router.push('/');
@@ -50,15 +50,7 @@ export function FormsSidebar() {
     }
   };
 
-  const handleSignOut = () => {
-    // Will implement later
-    console.log('Sign out clicked');
-  };
-
-  const handleSignIn = () => {
-    // Will implement later
-    console.log('Sign in clicked');
-  };
+  // Authentication will be implemented in future phases
 
   const handleCreateNewForm = async () => {
     try {
@@ -77,7 +69,7 @@ export function FormsSidebar() {
         }
       };
 
-      const docRef = await addDoc(collection(db, 'forms'), newFormData);
+      const docRef = await addDoc(collection(db, FORMS_COLLECTION), newFormData);
       router.push(`/forms/${docRef.id}/edit`);
     } catch (error) {
       console.error('Error creating new form:', error);
@@ -111,18 +103,8 @@ export function FormsSidebar() {
         </button>
       </div>
 
-      {/* Auth buttons */}
-      <div className="mb-4">
-        <div className="flex flex-col space-y-2">
-          <button
-            onClick={handleSignIn}
-            className="flex items-center justify-center text-sm text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 w-full"
-          >
-            <LogIn className="w-4 h-4 mr-2" />
-            Sign In
-          </button>
-        </div>
-      </div>
+      {/* Divider */}
+      <div className="mb-4 border-t border-gray-200"></div>
 
       <div className="space-y-4">
         {forms.map((form) => (

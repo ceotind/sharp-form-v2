@@ -77,6 +77,11 @@ export function FormBuilder({
           min: undefined,
           max: undefined,
         };
+      default:
+        // Default case for any other field type
+        return {
+          ...baseField
+        };
     }
   };
 

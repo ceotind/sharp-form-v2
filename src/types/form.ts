@@ -78,6 +78,7 @@ export interface Form {
   createdBy: string;
   responseCount?: number;
   lastResponseAt?: Date | any;
+  customSlug?: string; // For URL customization
   settings?: {
     allowMultipleResponses: boolean;
     customSuccessMessage: string;
