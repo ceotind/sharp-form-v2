@@ -1,14 +1,26 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
+import { FORMS_COLLECTION } from '@/lib/firebase';
 
 export async function GET(
   request: Request,
   { params }: { params: { slug: string } }
 ) {
   try {
+    // Server-side only check
+    if (typeof window !== 'undefined') {
+      return NextResponse.json({ error: 'This API is only available server-side' }, { status: 400 });
+    }
+    
     console.log('Checking slug:', params.slug);
     
-    const formsRef = adminDb.collection('forms');
+    // Ensure we have a valid slug
+    if (!params.slug) {
+      return NextResponse.json({ error: 'Slug parameter is required' }, { status: 400 });
+    }
+    
+    // Use the FORMS_COLLECTION constant for consistency
+    const formsRef = adminDb.collection(FORMS_COLLECTION);
     
     // Query for the specific slug
     const snapshot = await formsRef.where('settings.customSlug', '==', params.slug).get();
@@ -24,7 +36,7 @@ export async function GET(
       }
 
       const formDoc = directSnapshot.docs[0];
-      console.log('Found form with direct query:', { id: formDoc.id, data: formDoc.data() });
+      console.log('Found form with direct query:', { id: formDoc.id });
       return NextResponse.json({ id: formDoc.id });
     }
 
