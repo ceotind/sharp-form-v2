@@ -6,6 +6,7 @@ interface BaseFormElementProps {
   element: FormField;
   value: any;
   onChange: (value: any) => void;
+  onBlur?: () => void;
   error?: string;
   disabled?: boolean;
 }
@@ -14,6 +15,7 @@ export const BaseFormElement: React.FC<BaseFormElementProps> = ({
   element,
   value,
   onChange,
+  onBlur,
   error,
   disabled = false,
 }) => {
@@ -44,6 +46,7 @@ export const BaseFormElement: React.FC<BaseFormElementProps> = ({
   const elementProps = {
     value,
     onChange: handleChange,
+    onBlur,
     disabled,
     placeholder: placeholder || `Enter ${label.toLowerCase()}`,
     className: `${baseClasses} ${errorClasses} ${disabledClasses}`,
@@ -62,6 +65,7 @@ export const BaseFormElement: React.FC<BaseFormElementProps> = ({
           field: element,
           value,
           onChange: handleChange,
+          onBlur,
           error: displayError,
           disabled,
         })}

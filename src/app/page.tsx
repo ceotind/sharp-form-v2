@@ -1,114 +1,23 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { doc, setDoc, serverTimestamp, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
-import { db, FORMS_COLLECTION, RESPONSES_COLLECTION } from '@/lib/firebase';
+import { db, FORMS_COLLECTION } from '@/lib/firebase';
+import { doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc, where, getDocs } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
-import { FormField, Form } from '@/types/form';
+import { FormField } from '@/types/form';
+import { FormHeader } from '@/components/form-builder/FormHeader';
+import { FormPreview } from '@/components/form-builder/FormPreview';
+import { FormProperties } from '@/components/form-builder/FormProperties';
+import { FormTheme } from '@/components/form-builder/FormTheme';
+import { FormElements } from '@/components/form-builder/FormElements';
+import { ShareDialog } from '@/components/form-builder/ShareDialog';
+import { Sidebar } from '@/components/form-builder/Sidebar';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { FormBuilder } from '@/components/form-elements/FormBuilder';
-import { SortableField } from '@/components/form-elements/SortableField';
-import { Save, Plus, BarChart2, Eye, Edit, Trash, Share2, Copy, Menu, X, ChevronRight, Link, Settings, FileText, CheckSquare, Calendar, ToggleRight, AtSign, Hash, Film, FileImage, Clock, MessageSquare, Users, CircleDot, ChevronDown, ToggleLeft, Image, Star, SlidersHorizontal, Phone, MapPin, FileUp, ListTodo, BookText, Scale, Paperclip, FileCheck } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { toast as sonnerToast } from 'sonner';
-import { toast as toastUtils } from '@/components/ui/toast-utils';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
-// Import with dynamic import to resolve module issue
-import dynamic from 'next/dynamic';
-
-// Use dynamic import with no SSR to avoid hydration issues
-const FormBuilderLayout = dynamic(() => import('@/components/FormBuilderLayout'), { ssr: false });
-
-// Import form elements to register them
-import '@/components/form-elements/elements/TextInput';
-import '@/components/form-elements/elements/TextareaInput';
-import '@/components/form-elements/elements/SelectInput';
-import '@/components/form-elements/elements/CheckboxInput';
-import '@/components/form-elements/elements/RadioGroup';
-import '@/components/form-elements/elements/DateInput';
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  // Add your Firebase config here
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-// Firebase DB is imported from lib/firebase
-
-// Helper to generate a share link
-const generateShareLink = (formId: string): string => {
-  // Create an absolute URL that works across different browsers and sessions
-  const baseUrl = typeof window !== 'undefined' 
-    ? window.location.origin 
-    : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    
-  // This will be the public-facing URL for filling forms
-  return `${baseUrl}/forms/${formId}`;
-};
-
-// Helper to get response count badge color
-const getResponseBadgeColor = (count: number): string => {
-  if (count === 0) return 'bg-gray-100 text-gray-500';
-  if (count < 10) return 'bg-blue-100 text-blue-700';
-  if (count < 50) return 'bg-green-100 text-green-700';
-  return 'bg-purple-100 text-purple-700';
-};
-
-const FormItem = ({ form, onEdit, onDelete, onView, isActive }: { 
-  form: any, 
-  onEdit: () => void, 
-  onDelete: () => void, 
-  onView: () => void, 
-  isActive: boolean 
-}) => {
-  const responseCount = form.responseCount || 0;
-  const formDate = form.createdAt ? new Date(form.createdAt) : new Date();
-  const formattedDate = formDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  
-  return (
-    <div className={`flex items-center justify-between p-3 rounded-lg mb-2 transition-colors ${isActive ? 'bg-[#0f51dd]/10 border-l-4 border-[#0f51dd]' : 'hover:bg-gray-50'}`}>
-      <div className="flex-1 min-w-0">
-        <h4 className="text-sm font-medium truncate">{form.title || 'Untitled Form'}</h4>
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span>{formattedDate}</span>
-          <span>{responseCount} responses</span>
-        </div>
-      </div>
-      <div className="flex items-center space-x-1 bg-gray-50 px-2 py-1 rounded-md shadow-sm">
-        <Button variant="ghost" size="icon" onClick={onView} className="h-8 w-8 p-1.5 bg-white border hover:bg-gray-50 flex items-center justify-center" title="View Form">
-          <Eye className="h-4 w-4 text-[#0f51dd]" />
-        </Button>
-
-        <Button variant="ghost" size="icon" onClick={onEdit} className="h-8 w-8 p-1.5 bg-white border hover:bg-gray-50 flex items-center justify-center" title="Edit Form">
-          <Edit className="h-4 w-4 text-[#0f51dd]" />
-        </Button>
-
-        <Button variant="ghost" size="icon" onClick={onDelete} className="h-8 w-8 p-1.5 bg-white border hover:bg-red-50 flex items-center justify-center" title="Delete Form">
-          <Trash className="h-4 w-4 text-red-500" />
-        </Button>
-      </div>
-    </div>
-  );
-};
+import debounce from 'lodash/debounce';
 
 export default function CreateFormPage() {
   const router = useRouter();
@@ -119,7 +28,6 @@ export default function CreateFormPage() {
   const [formDescription, setFormDescription] = useState('');
   const [fields, setFields] = useState<FormField[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [editingField, setEditingField] = useState<FormField | null>(null);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [forms, setForms] = useState<any[]>([]);
   
@@ -132,17 +40,10 @@ export default function CreateFormPage() {
   const [themeBackground, setThemeBackground] = useState('');
   const [textColor, setTextColor] = useState('');
   const [accentColor, setAccentColor] = useState('');
-  const [themeSaving, setThemeSaving] = useState(false);
-  const [themeSaveMsg, setThemeSaveMsg] = useState('');
 
-  const user = { id: 'anonymous' }; // Anonymous user since auth will be implemented in future phases
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  // Custom URL state
+  const [customSlug, setCustomSlug] = useState('');
+  const [isSlugAvailable, setIsSlugAvailable] = useState<boolean>(true);
 
   useEffect(() => {
     const q = query(collection(db, FORMS_COLLECTION), orderBy('createdAt', 'desc'));
@@ -156,35 +57,45 @@ export default function CreateFormPage() {
     return () => unsubscribe();
   }, []);
 
-  // Handle drag and drop for fields
-  const handleDragEnd = (event: any) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setFields((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
+  // Check if the custom slug is available
+  const checkSlugAvailability = async (slug: string) => {
+    if (!slug) {
+      setIsSlugAvailable(true);
+      return;
+    }
+
+    try {
+      const q = query(collection(db, FORMS_COLLECTION), where('customSlug', '==', slug));
+      const snapshot = await getDocs(q);
+      
+      // If there are no documents with this slug, or the only document is the current form
+      const isAvailable = snapshot.empty || 
+        (snapshot.size === 1 && snapshot.docs[0].id === selectedFormId);
+      
+      setIsSlugAvailable(isAvailable);
+    } catch (error) {
+      console.error('Error checking slug availability:', error);
+      setIsSlugAvailable(false);
     }
   };
 
-  // Handle field changes from FormBuilder
-  const handleFieldsChange = (newFields: FormField[]) => {
-    setFields(newFields);
+  // Debounced version of the slug checker
+  const debouncedCheckSlug = debounce(checkSlugAvailability, 500);
+
+  // Helper to generate a share link
+  const generateShareLink = (formId: string): string => {
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    return `${baseUrl}/forms/${formId}`;
   };
 
-  // Handle field selection
-  const handleFieldSelect = (field: FormField) => {
-    // Since we're already adding an ID when creating the field, we can use it directly
-    setFields(prev => [...prev, field]);
-    setEditingField(field);
-    
-    // Show success toast using Sonner
-    sonnerToast.success(`${field.type.charAt(0).toUpperCase() + field.type.slice(1)} field added`, {
-      description: "Field added to your form. You can now configure its properties.",
-      className: "bg-white border-green-500 border-l-4",
-      position: "top-right"
-    });
+  // Helper to get response count badge color
+  const getResponseBadgeColor = (count: number): string => {
+    if (count === 0) return 'bg-gray-100 text-gray-500';
+    if (count < 10) return 'bg-blue-100 text-blue-700';
+    if (count < 50) return 'bg-green-100 text-green-700';
+    return 'bg-purple-100 text-purple-700';
   };
 
   // Update field
@@ -192,10 +103,111 @@ export default function CreateFormPage() {
     setFields(prev => prev.map(field => 
       field.id === updatedField.id ? updatedField : field
     ));
-    setEditingField(null);
   };
 
-  // Publish form
+  // Handle field selection for adding new fields
+  const handleFieldSelect = (fieldType: string) => {
+    const baseField = {
+      id: uuidv4(),
+      label: `New ${fieldType} field`,
+      description: `Enter description for this ${fieldType} field`,
+      helpText: `Help text for ${fieldType} field`,
+      required: false,
+      placeholder: `Enter ${fieldType} value here`,
+      defaultValue: '',
+      validation: {
+        required: false,
+        pattern: '',
+        minLength: 0,
+        maxLength: 100
+      }
+    };
+
+    let newField: FormField;
+    switch (fieldType) {
+      case 'text':
+      case 'email':
+      case 'url':
+      case 'tel':
+      case 'number':
+        newField = {
+          ...baseField,
+          type: fieldType as "text" | "email" | "url" | "tel" | "number",
+        };
+        break;
+
+      case 'textarea':
+        newField = {
+          ...baseField,
+          type: 'textarea',
+          rows: 3,
+        };
+        break;
+
+      case 'dropdown':
+        newField = {
+          ...baseField,
+          type: 'dropdown',
+          options: [
+            { id: uuidv4(), label: 'Option 1', value: 'option1' },
+            { id: uuidv4(), label: 'Option 2', value: 'option2' }
+          ],
+          multiple: false,
+        };
+        break;
+
+      case 'checkbox':
+        newField = {
+          ...baseField,
+          type: 'checkbox',
+          checked: false,
+        };
+        break;
+
+      case 'radio':
+        newField = {
+          ...baseField,
+          type: 'radio',
+          options: [
+            { id: uuidv4(), label: 'Option 1', value: 'option1' },
+            { id: uuidv4(), label: 'Option 2', value: 'option2' }
+          ],
+        };
+        break;
+
+      case 'date':
+        newField = {
+          ...baseField,
+          type: 'date',
+        };
+        break;
+
+      default:
+        throw new Error(`Unsupported field type: ${fieldType}`);
+    }
+
+    setFields(prev => [...prev, newField]);
+  };
+
+  // Handle edit form
+  const handleEditForm = async (formId: string) => {
+    const form = forms.find(f => f.id === formId);
+    if (form) {
+      setFormTitle(form.title);
+      setFormDescription(form.description || '');
+      setFields(form.fields);
+      setCustomSlug(form.customSlug || '');
+      if (form.settings) {
+        setThemeBackground(form.settings.themeBackground || '');
+        setTextColor(form.settings.textColor || '');
+        setAccentColor(form.settings.accentColor || '');
+      }
+      setSelectedFormId(formId);
+      await checkSlugAvailability(form.customSlug || '');
+    }
+  };
+
+  // Handle form publishing
   const handlePublish = async () => {
     if (!formTitle.trim()) {
       setError('Please enter a form title');
@@ -217,6 +229,16 @@ export default function CreateFormPage() {
       return;
     }
 
+    if (customSlug && !isSlugAvailable) {
+      setError('The custom URL is already taken');
+      toast({
+        title: "URL not available",
+        description: "Please choose a different custom URL",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsPublishing(true);
     setError(null);
 
@@ -224,7 +246,6 @@ export default function CreateFormPage() {
       const formId = uuidv4();
       const timestamp = new Date().toISOString();
 
-      // Create form data with required fields
       const formData = {
         id: formId,
         title: formTitle.trim(),
@@ -232,15 +253,15 @@ export default function CreateFormPage() {
         updatedAt: timestamp,
         published: true,
         responseCount: 0,
+        customSlug: customSlug || null,
         metadata: {
           lastModified: timestamp,
           created: timestamp,
           version: '1.0',
           platform: 'SharpForm'
         },
-        // Optional fields below
         description: formDescription.trim() || null,
-        fields: fields.length > 0 ? fields : [],
+        fields: fields,
         settings: {
           allowMultipleResponses: true,
           customSuccessMessage: 'Thank you for your submission!',
@@ -251,7 +272,14 @@ export default function CreateFormPage() {
         }
       };
 
-      // Save to Firebase
+      // If there's a custom slug, create it in a separate collection for quick lookups
+      if (customSlug) {
+        await setDoc(doc(db, 'form_slugs', customSlug), {
+          formId,
+          createdAt: timestamp
+        });
+      }
+
       await setDoc(doc(db, FORMS_COLLECTION, formId), formData);
       
       toast({
@@ -260,8 +288,7 @@ export default function CreateFormPage() {
         variant: "default"
       });
       
-      router.push(`/forms/${formId}`);
-
+      router.push(customSlug ? `/forms/${customSlug}` : `/forms/${formId}`);
     } catch (err) {
       console.error('Error creating form:', err);
       setError('Failed to create form. Please try again.');
@@ -275,63 +302,23 @@ export default function CreateFormPage() {
     }
   };
 
-  // Save theme settings
-  const handleThemeSave = async (formId: string) => {
-    setThemeSaving(true);
-    setThemeSaveMsg('');
-    try {
-      await updateDoc(doc(db, FORMS_COLLECTION, formId), {
-        'settings.themeBackground': themeBackground,
-        'settings.textColor': textColor,
-        'settings.accentColor': accentColor,
-      });
-      setThemeSaveMsg('Theme updated!');
-    } catch (e) {
-      setThemeSaveMsg('Failed to update theme.');
-    } finally {
-      setThemeSaving(false);
-    }
-  };
-
-  async function deleteForm(id: string) {
-    try {
-      await deleteDoc(doc(db, FORMS_COLLECTION, id));
-      toast({
-        title: "Form deleted",
-        description: "The form has been permanently deleted",
-      });
-    } catch (error) {
-      console.error('Error deleting form:', error);
-      toast({
-        title: "Delete failed",
-        description: "Could not delete the form. Please try again.",
-        variant: "destructive"
-      });
-    }
-  }
-
-  const handleEditForm = async (formId: string) => {
-    const form = forms.find(f => f.id === formId);
-    if (form) {
-      setFormTitle(form.title);
-      setFormDescription(form.description || '');
-      setFields(form.fields);
-      if (form.settings) {
-        setThemeBackground(form.settings.themeBackground || '');
-        setTextColor(form.settings.textColor || '');
-        setAccentColor(form.settings.accentColor || '');
-      }
-      setSelectedFormId(formId);
-    }
-  };
-
-  // New function to handle form updates
+  // Handle form update
   const handleUpdateForm = async () => {
     if (!selectedFormId || !formTitle.trim()) {
       setError('Please enter a form title');
       toast({
         title: "Missing title",
         description: "Please provide a title for your form before saving",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (customSlug && !isSlugAvailable) {
+      setError('The custom URL is already taken');
+      toast({
+        title: "URL not available",
+        description: "Please choose a different custom URL",
         variant: "destructive"
       });
       return;
@@ -347,6 +334,7 @@ export default function CreateFormPage() {
         title: formTitle.trim(),
         description: formDescription.trim() || '',
         fields: fields,
+        customSlug: customSlug || null,
         updatedAt: timestamp,
         'metadata.lastModified': timestamp,
         settings: {
@@ -359,6 +347,22 @@ export default function CreateFormPage() {
         }
       };
 
+      // Update the form_slugs collection if needed
+      const oldForm = forms.find(f => f.id === selectedFormId);
+      if (oldForm?.customSlug !== customSlug) {
+        if (oldForm?.customSlug) {
+          // Delete old slug
+          await deleteDoc(doc(db, 'form_slugs', oldForm.customSlug));
+        }
+        if (customSlug) {
+          // Create new slug
+          await setDoc(doc(db, 'form_slugs', customSlug), {
+            formId: selectedFormId,
+            createdAt: timestamp
+          });
+        }
+      }
+
       await updateDoc(doc(db, FORMS_COLLECTION, selectedFormId), formData);
       
       toast({
@@ -367,21 +371,48 @@ export default function CreateFormPage() {
         variant: "default"
       });
       
-      router.push(`/forms/${selectedFormId}`);
+      router.push(customSlug ? `/forms/${customSlug}` : `/forms/${selectedFormId}`);
     } catch (err) {
       console.error('Error updating form:', err);
       setError('Failed to update form. Please try again.');
-      sonnerToast.error("Error", {
-        description: error || "There was a problem saving your form. Please try again.",
-        className: "bg-white border-red-500 border-l-4",
-        position: "top-right"
-      });
     } finally {
       setIsPublishing(false);
     }
-  }; // End of handleUpdateForm
+  };
 
-  // Copy share link to clipboard
+  // Handle theme save
+  const handleThemeSave = async (formId: string) => {
+    try {
+      await updateDoc(doc(db, FORMS_COLLECTION, formId), {
+        'settings.themeBackground': themeBackground,
+        'settings.textColor': textColor,
+        'settings.accentColor': accentColor,
+      });
+      sonnerToast.success('Theme updated!');
+    } catch (e) {
+      sonnerToast.error('Failed to update theme.');
+    }
+  };
+
+  // Handle form deletion
+  const deleteForm = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, FORMS_COLLECTION, id));
+      toast({
+        title: "Form deleted",
+        description: "The form has been permanently deleted",
+      });
+    } catch (error) {
+      console.error('Error deleting form:', error);
+      toast({
+        title: "Delete failed",
+        description: "Could not delete the form. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Handle share link copy
   const copyShareLink = () => {
     navigator.clipboard.writeText(currentShareLink);
     toast({
@@ -390,7 +421,7 @@ export default function CreateFormPage() {
     });
   };
 
-  // Generate and open share dialog
+  // Handle share form dialog
   const handleShareForm = (formId: string) => {
     if (!formId) return;
     const shareLink = generateShareLink(formId);
@@ -398,7 +429,12 @@ export default function CreateFormPage() {
     setShareDialogOpen(true);
   };
 
-  // Main render
+  // Handle custom slug change
+  const handleCustomSlugChange = (slug: string) => {
+    setCustomSlug(slug);
+    debouncedCheckSlug(slug);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Mobile Sidebar Toggle */}
@@ -408,898 +444,113 @@ export default function CreateFormPage() {
         </Button>
       </div>
 
-      {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 bg-white w-64 shadow-lg transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-200 ease-in-out md:translate-x-0 z-10`}>
-        <div className="flex flex-col h-full">
-          <div className="p-4 border-b bg-[#0f51dd]">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <FileText className="h-5 w-5" /> SharpForm
-            </h2>
-            <p className="text-sm text-blue-100">Advanced Form Builder</p>
-          </div>
-          
-          <div className="p-4">
-            <Button onClick={() => {
-              setFormTitle('Untitled Form');
-              setFormDescription('');
-              setFields([]);
-              setThemeBackground('');
-              setTextColor('');
-              setAccentColor('');
-              setSelectedFormId(null);
-              
-              // Provide feedback
-              toast({
-                title: "New form started",
-                description: "Add form elements and customize your new form",
-              });
-            }} 
-            className="w-full justify-start gap-2 bg-[#0f51dd] hover:bg-[#0a3eaf] text-white">
-              <Plus className="h-4 w-4" /> New Form
-            </Button>
-          </div>
-          
-          <ScrollArea className="flex-1 p-4">
-            {forms.length > 0 ? (
-              forms.map((form) => (
-                <FormItem
-                  key={form.id}
-                  form={form}
-                  isActive={selectedFormId === form.id}
-                  onEdit={() => handleEditForm(form.id)}
-                  onDelete={() => {
-                    if (window.confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
-                      deleteForm(form.id);
-                    }
-                  }}
-                  onView={() => router.push(`/forms/${form.id}`)}
-                />
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p>No forms yet</p>
-                <p className="text-sm">Create your first form to get started</p>
-              </div>
-            )}
-          </ScrollArea>
-        </div>
-      </div>
+      <Sidebar 
+        forms={forms}
+        selectedFormId={selectedFormId}
+        sidebarOpen={sidebarOpen}
+        onNewForm={() => {
+          setFormTitle('Untitled Form');
+          setFormDescription('');
+          setFields([]);
+          setThemeBackground('');
+          setTextColor('');
+          setAccentColor('');
+          setSelectedFormId(null);
+        }}
+        onEditForm={handleEditForm}
+        onDeleteForm={deleteForm}
+        onViewForm={(id) => router.push(`/forms/${id}`)}
+        onClose={() => setSidebarOpen(false)}
+      />
 
-      {/* Main Content */}
       <div className={`flex-1 transition-all duration-200 ${sidebarOpen ? 'md:ml-64' : 'ml-0'}`}>
         <div className="container mx-auto px-4 py-8">
-          <div className="mb-6">
-            {/* Form Actions Bar */}
-            <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="bg-[#0f51dd] w-10 h-10 rounded-lg flex items-center justify-center shadow-md">
-                  <FileText className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl md:text-2xl font-bold">
-                    {selectedFormId ? 'Edit Form' : 'Create New Form'}
-                  </h1>
-                  <p className="text-xs text-gray-500">
-                    {selectedFormId ? 'Making changes to an existing form' : 'Design a new form from scratch'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {selectedFormId && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => router.push(`/forms/${selectedFormId}`)}
-                      className="gap-2 hidden sm:flex"
-                      size="sm"
-                    >
-                      <Eye className="w-4 h-4" />
-                      <span className="hidden md:inline">View</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => router.push(`/forms/${selectedFormId}/responses`)}
-                      className="gap-2 hidden sm:flex"
-                      size="sm"
-                    >
-                      <BarChart2 className="w-4 h-4" />
-                      <span className="hidden md:inline">Responses</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleShareForm(selectedFormId)}
-                      className="gap-2"
-                      size="sm"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      <span className="hidden md:inline">Share</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (window.confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
-                          deleteForm(selectedFormId);
-                          router.push('/');
-                        }
-                      }}
-                      className="gap-2 text-red-500 border-red-200 hover:bg-red-50"
-                      size="sm"
-                    >
-                      <Trash className="w-4 h-4" />
-                      <span className="hidden md:inline">Delete</span>
-                    </Button>
-                  </>
-                )}
-                {selectedFormId && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={handleUpdateForm}
-                      disabled={isPublishing}
-                      className="gap-2 bg-[#0f51dd] hover:bg-[#0a3eaf] text-white"
-                      size="sm"
-                    >
-                      <Save className="w-4 h-4" />
-                      <span className="hidden md:inline">Save</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (window.confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
-                          deleteForm(selectedFormId);
-                          router.push('/');
-                        }
-                      }}
-                      className="gap-2 text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600"
-                      size="sm"
-                    >
-                      <Trash className="w-4 h-4" />
-                      <span className="hidden md:inline">Delete</span>
-                    </Button>
-                  </div>
-                )}
-                <Button
-                  onClick={selectedFormId ? handleUpdateForm : handlePublish}
-                  disabled={isPublishing}
-                  className="gap-2 bg-[#0f51dd] hover:bg-[#0a3eaf] text-white"
-                  size="sm"
-                >
-                  <Save className="w-4 h-4" />
-                  {isPublishing ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      {selectedFormId ? 'Saving...' : 'Publishing...'}
-                    </span>
-                  ) : (selectedFormId ? 'Save Changes' : 'Publish Form')}
-                </Button>
-              </div>
+          <FormHeader 
+            formTitle={formTitle}
+            selectedFormId={selectedFormId}
+            isPublishing={isPublishing}
+            onPublish={handlePublish}
+            onUpdate={handleUpdateForm}
+            onView={(id) => router.push(`/forms/${id}`)}
+            onShare={handleShareForm}
+            onDelete={deleteForm}
+          />
+
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-6">
+              <p className="text-sm text-red-600">{error}</p>
             </div>
-            
-            {/* Error message */}
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-6">
-                <p className="text-sm text-red-600 flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {error}
-                </p>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">              <FormPreview 
+                formTitle={formTitle}
+                formDescription={formDescription}
+                fields={fields}
+                themeBackground={themeBackground}
+                textColor={textColor}
+                accentColor={accentColor}
+                onFieldsChange={setFields}
+                onFieldUpdate={handleFieldUpdate}
+                onFieldEdit={(field) => {
+                  // Open the field editor for this field
+                  const editorElement = document.querySelector(`[data-field-id="${field.id}"]`);
+                  if (editorElement) {
+                    editorElement.scrollIntoView({ behavior: 'smooth' });
+                  }
+                  // Set the editing state and update the field
+                  handleFieldUpdate(field);
+                }}
+                onFieldDelete={(id) => {
+                  const field = fields.find(f => f.id === id);
+                  if (field) {
+                    const fieldType = field.type.charAt(0).toUpperCase() + field.type.slice(1);
+                    setFields(fields.filter(f => f.id !== id));
+                    toast({
+                      title: "Field removed",
+                      description: `${fieldType} field has been removed`,
+                      variant: "default"
+                    });
+                  }
+                }}
+              />
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                <FormProperties 
+                  formTitle={formTitle}
+                  formDescription={formDescription}
+                  customSlug={customSlug}
+                  onTitleChange={setFormTitle}
+                  onDescriptionChange={setFormDescription}
+                  onCustomSlugChange={handleCustomSlugChange}
+                  isSlugAvailable={isSlugAvailable}
+                />
+
+                <FormTheme 
+                  themeBackground={themeBackground}
+                  textColor={textColor}
+                  accentColor={accentColor}
+                  onBackgroundChange={setThemeBackground}
+                  onTextColorChange={setTextColor}
+                  onAccentColorChange={setAccentColor}
+                  onSave={() => handleThemeSave(selectedFormId!)}
+                />
               </div>
-            )}
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-              {/* Left Column - Form Preview */}
-              <div className="space-y-6">
-                {/* Form Preview Card */}
-                <Card>
-              <CardHeader>
-                <CardTitle className="flex justify-between items-center">
-                  Form Preview
-                  <Button variant="ghost" size="sm" className="gap-1" onClick={() => {
-                    if (fields.length > 0) {
-                      router.push(selectedFormId ? `/forms/${selectedFormId}` : '#');
-                    } else {
-                      toast({
-                        title: "No fields added",
-                        description: "Add some fields to your form before previewing",
-                        variant: "destructive"
-                      });
-                    }
-                  }}>
-                    <Eye className="w-4 h-4" /> <span className="hidden md:inline">Preview</span>
-                  </Button>
-                </CardTitle>
-                <CardDescription>
-                  Preview how your form will appear to users
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-lg overflow-hidden">
-                  <div 
-                    className="p-6 relative" 
-                    style={{
-                      background: themeBackground || 'white',
-                      color: textColor || 'inherit'
-                    }}
-                  >
-                    {themeBackground && <div className="absolute inset-0 opacity-5 bg-pattern-grid"></div>}
-                    <div className="relative space-y-4">
-                      <h3 className="text-2xl font-bold break-words leading-tight">
-                        {formTitle || 'Untitled Form'}
-                      </h3>
-                      {formDescription && (
-                        <p className="text-base opacity-80 break-words leading-relaxed">
-                          {formDescription}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white border border-gray-200 p-4 rounded-b-lg">
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext 
-                        items={fields.map(f => f.id)} 
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <div className="space-y-4">
-                          {fields.length > 0 ? fields.map((field) => (
-                            <SortableField
-                              key={field.id}
-                              field={field}
-                              isSelected={editingField?.id === field.id}
-                              onSelect={() => setEditingField(field)}
-                              onUpdate={(updates: Partial<FormField>) => handleFieldUpdate({ ...field, ...updates })}
-                              onDelete={() => {
-                                setFields(prev => prev.filter(f => f.id !== field.id));
-                                toast({
-                                  title: "Field removed",
-                                  description: `${field.type.charAt(0).toUpperCase() + field.type.slice(1)} field has been removed`,
-                                  variant: "default"
-                                });
-                              }}
-                            />
-                          )) : (
-                            <div className="text-center py-10 text-gray-500 border border-dashed border-gray-200 rounded-lg bg-gray-50">
-                              <div className="flex flex-col items-center justify-center gap-2">
-                                <FileText className="h-8 w-8 text-gray-400" />
-                                <p className="font-medium">No form elements added yet</p>
-                                <p className="text-sm">Use the form elements panel to add fields</p>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => document.getElementById('form-elements-section')?.scrollIntoView({ behavior: 'smooth' })}
-                                  className="mt-2"
-                                >
-                                  Add Elements
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </SortableContext>
-                    </DndContext>
-                    
-                    {fields.length > 0 && (
-                      <div className="mt-6 flex justify-end">
-                        <Button 
-                          className="gap-2"
-                          style={{ backgroundColor: accentColor || '#3b82f6', color: 'white' }}
-                        >
-                          <Save className="h-4 w-4" /> Submit
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-                </Card>
-              </div>
-              
-              {/* Right Column - Form Settings */}
-              <div className="space-y-6">
-                {/* Properties and Theme Row - Side by side layout */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                  {/* Form Properties Card */}
-                  <Card className="h-full shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                        <Settings className="h-4 w-4 md:h-5 md:w-5 text-[#0f51dd]" /> 
-                        Form Properties
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div>
-                          <Label htmlFor="form-name" className="text-xs md:text-sm font-medium">Form Name</Label>
-                          <Input 
-                            id="form-name" 
-                            value={formTitle}
-                            onChange={(e) => setFormTitle(e.target.value)}
-                            className="mt-1 h-9 text-sm md:text-base"
-                            placeholder="Enter form title"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="form-description" className="text-xs md:text-sm font-medium">Description</Label>
-                          <Input 
-                            id="form-description" 
-                            value={formDescription}
-                            onChange={(e) => setFormDescription(e.target.value)}
-                            className="mt-1 h-9 text-sm md:text-base"
-                            placeholder="Enter form description"
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  
-                  {/* Form Theme Card - Moved from below */}
-                  <Card id="form-theme-section" className="h-full shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                        <SlidersHorizontal className="h-4 w-4 md:h-5 md:w-5 text-[#0f51dd]" /> 
-                        Form Theme
-                      </CardTitle>
-                      <CardDescription className="text-xs md:text-sm">Customize your form appearance</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-xs md:text-sm font-medium">Background</Label>
-                            <div className="flex gap-2">
-                              <input
-                                type="color"
-                                value={themeBackground || '#ffffff'}
-                                onChange={e => setThemeBackground(e.target.value)}
-                                className="w-8 h-8 rounded-md border border-gray-200 cursor-pointer"
-                              />
-                              <Input
-                                type="text"
-                                value={themeBackground || '#ffffff'}
-                                onChange={e => setThemeBackground(e.target.value)}
-                                className="flex-1 h-8 text-xs md:text-sm"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-xs md:text-sm font-medium">Accent Color</Label>
-                            <div className="flex gap-2">
-                              <input
-                                type="color"
-                                value={accentColor || '#0f51dd'}
-                                onChange={e => setAccentColor(e.target.value)}
-                                className="w-8 h-8 rounded-md border border-gray-200 cursor-pointer"
-                              />
-                              <Input
-                                type="text"
-                                value={accentColor || '#0f51dd'}
-                                onChange={e => setAccentColor(e.target.value)}
-                                className="flex-1 h-8 text-xs md:text-sm"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => {
-                            if (selectedFormId) {
-                              handleThemeSave(selectedFormId);
-                            } else {
-                              toast({
-                                title: "Save form first",
-                                description: "Please save your form before applying theme changes"
-                              });
-                            }
-                          }}
-                          className="mt-2 text-xs md:text-sm h-8 md:h-9"
-                        >
-                          Apply Theme
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Form Elements Card */}
-                <Card className="mt-6">
-                  <CardHeader>
-                    <CardTitle>Form Elements</CardTitle>
-                    <CardDescription>Drag and drop elements to build your form</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div id="form-elements-section">
-                  <Tabs defaultValue="text" className="w-full">
-                    <TabsList className="w-full mb-4 grid grid-cols-5 h-auto">
-                      <TabsTrigger value="text" className="py-2 flex gap-1 items-center">
-                        <span className="text-xs lg:text-sm">🔤 Text</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="choice" className="py-2 flex gap-1 items-center">
-                        <span className="text-xs lg:text-sm">🔘 Choice</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="numeric" className="py-2 flex gap-1 items-center">
-                        <span className="text-xs lg:text-sm">🔢 Number</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="datetime" className="py-2 flex gap-1 items-center">
-                        <span className="text-xs lg:text-sm">📅 Date/Time</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="other" className="py-2 flex gap-1 items-center">
-                        <span className="text-xs lg:text-sm">📁 Other</span>
-                      </TabsTrigger>
-                    </TabsList>
-                    
-                    {/* TEXT INPUTS */}
-                    <TabsContent value="text" className="space-y-4">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">Text Input Fields</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <Button 
-                          onClick={() => handleFieldSelect({ id: uuidv4(), type: 'text', label: 'Short Text', placeholder: 'Enter text...', required: false })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <FileText className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Short Text</span>
-                          <span className="text-xs text-gray-500">Single line answer</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ id: uuidv4(), type: 'textarea', label: 'Long Text', placeholder: 'Enter your answer...', required: false, rows: 4 })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <MessageSquare className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Long Text</span>
-                          <span className="text-xs text-gray-500">Paragraph answer</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'email', 
-                            label: 'Email', 
-                            placeholder: 'Enter email address', 
-                            required: false 
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <AtSign className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Email</span>
-                          <span className="text-xs text-gray-500">Email address</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'website', 
-                            label: 'Website', 
-                            placeholder: 'https://', 
-                            required: false 
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Link className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Website</span>
-                          <span className="text-xs text-gray-500">URL input</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'phone', 
-                            label: 'Phone Number', 
-                            placeholder: '+1 (555) 000-0000', 
-                            required: false 
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Phone className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Phone</span>
-                          <span className="text-xs text-gray-500">Phone number</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'address', 
-                            label: 'Address', 
-                            placeholder: 'Enter full address', 
-                            required: false,
-                            includeStreet: true,
-                            includeCity: true,
-                            includeState: true,
-                            includeZip: true,
-                            includeCountry: true
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <MapPin className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Address</span>
-                          <span className="text-xs text-gray-500">Full address</span>
-                        </Button>
-                      </div>
-                    </TabsContent>
-                    
-                    {/* CHOICE INPUTS */}
-                    <TabsContent value="choice" className="space-y-4">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">Choice-Based Fields</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'radio', 
-                            label: 'Multiple Choice', 
-                            required: false,
-                            options: [
-                              { id: '1', label: 'Option 1', value: 'option1' },
-                              { id: '2', label: 'Option 2', value: 'option2' },
-                              { id: '3', label: 'Option 3', value: 'option3' },
-                            ]
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <CircleDot className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Multiple Choice</span>
-                          <span className="text-xs text-gray-500">Select one option</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'checkbox', 
-                            label: 'Checkboxes', 
-                            required: false,
-                            options: [
-                              { id: '1', label: 'Option 1', value: 'option1' },
-                              { id: '2', label: 'Option 2', value: 'option2' },
-                              { id: '3', label: 'Option 3', value: 'option3' },
-                            ],
-                            allowMultiple: true
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <CheckSquare className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Checkboxes</span>
-                          <span className="text-xs text-gray-500">Select multiple</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'dropdown', 
-                            label: 'Dropdown', 
-                            placeholder: 'Select an option', 
-                            required: false,
-                            options: [
-                              { id: '1', label: 'Option 1', value: 'option1' },
-                              { id: '2', label: 'Option 2', value: 'option2' },
-                              { id: '3', label: 'Option 3', value: 'option3' },
-                            ]
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <ChevronDown className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Dropdown</span>
-                          <span className="text-xs text-gray-500">Compact list</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'yesno', 
-                            label: 'Yes/No Question', 
-                            required: false,
-                            options: [
-                              { id: '1', label: 'Yes', value: 'yes' },
-                              { id: '2', label: 'No', value: 'no' },
-                            ]
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <ToggleLeft className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Yes/No</span>
-                          <span className="text-xs text-gray-500">Binary choice</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'picture-choice', 
-                            label: 'Picture Choice', 
-                            required: false,
-                            options: [
-                              { id: '1', label: 'Option 1', value: 'option1', imageUrl: '' },
-                              { id: '2', label: 'Option 2', value: 'option2', imageUrl: '' },
-                              { id: '3', label: 'Option 3', value: 'option3', imageUrl: '' },
-                            ]
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Image className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Picture Choice</span>
-                          <span className="text-xs text-gray-500">Visual options</span>
-                        </Button>
-                      </div>
-                    </TabsContent>
-                    
-                    {/* NUMERIC INPUTS */}
-                    <TabsContent value="numeric" className="space-y-4">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">Numeric Input Fields</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'number', 
-                            label: 'Number', 
-                            placeholder: 'Enter a number', 
-                            required: false 
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Hash className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Number</span>
-                          <span className="text-xs text-gray-500">Numerical input</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'rating', 
-                            label: 'Rating', 
-                            required: false,
-                            maxRating: 5,
-                            ratingType: 'star' // star, heart, thumbs
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Star className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Rating</span>
-                          <span className="text-xs text-gray-500">Star rating</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'opinion-scale', 
-                            label: 'Opinion Scale', 
-                            required: false,
-                            min: 1,
-                            max: 10,
-                            minLabel: 'Not likely',
-                            maxLabel: 'Very likely'
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <BarChart2 className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Opinion Scale</span>
-                          <span className="text-xs text-gray-500">1-10 scale</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'slider', 
-                            label: 'Slider', 
-                            required: false,
-                            min: 0,
-                            max: 100,
-                            step: 1,
-                            defaultValue: 50
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <SlidersHorizontal className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Slider</span>
-                          <span className="text-xs text-gray-500">Visual scale</span>
-                        </Button>
-                      </div>
-                    </TabsContent>
-                    
-                    {/* DATE/TIME INPUTS */}
-                    <TabsContent value="datetime" className="space-y-4">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">Date and Time Fields</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'date', 
-                            label: 'Date', 
-                            required: false
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Calendar className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Date</span>
-                          <span className="text-xs text-gray-500">Date picker</span>
-                        </Button>
-                        
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'time', 
-                            label: 'Time', 
-                            required: false
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Clock className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Time</span>
-                          <span className="text-xs text-gray-500">Time picker</span>
-                        </Button>
-                      </div>
-                    </TabsContent>
-                    
-                    {/* OTHER INPUTS */}
-                    <TabsContent value="other" className="space-y-4">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">Other Field Types</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'file', 
-                            label: 'File Upload', 
-                            required: false,
-                            accept: '.pdf,.doc,.docx,.jpg,.jpeg,.png'
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <FileUp className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">File Upload</span>
-                          <span className="text-xs text-gray-500">Document upload</span>
-                        </Button>
-
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'statement', 
-                            label: 'Statement', 
-                            content: 'Add your statement text here...',
-                            required: false
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <BookText className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Statement</span>
-                          <span className="text-xs text-gray-500">Static text block</span>
-                        </Button>
-
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'hidden', 
-                            label: 'Hidden Field', 
-                            name: 'hidden_field',
-                            value: '',
-                            required: false
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Eye className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Hidden Field</span>
-                          <span className="text-xs text-gray-500">URL parameters</span>
-                        </Button>
-
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'question-group', 
-                            label: 'Question Group', 
-                            description: 'Group of related questions',
-                            fields: [],
-                            required: false
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <ListTodo className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Question Group</span>
-                          <span className="text-xs text-gray-500">Organize questions</span>
-                        </Button>
-
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'legal', 
-                            label: 'Terms & Conditions', 
-                            content: 'I agree to the terms and conditions.',
-                            required: true
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Scale className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Legal Agreement</span>
-                          <span className="text-xs text-gray-500">Terms & conditions</span>
-                        </Button>
-
-                        <Button 
-                          onClick={() => handleFieldSelect({ 
-                            id: uuidv4(),
-                            type: 'attachment', 
-                            label: 'Attachment', 
-                            description: 'Provide an attachment for the form',
-                            url: '',
-                            required: false
-                          })}
-                          variant="outline" 
-                          className="h-auto p-4 flex flex-col items-center gap-2 hover:border-[#0f51dd] hover:bg-[#0f51dd]/5 border-gray-200"
-                        >
-                          <Paperclip className="h-5 w-5 text-[#0f51dd]" />
-                          <span className="text-sm font-medium">Attachment</span>
-                          <span className="text-xs text-gray-500">Add document link</span>
-                        </Button>
-                      </div>
-                  
-                      <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
-                        <p className="text-xs text-amber-800 flex items-center gap-1.5">
-                          <Users className="h-3.5 w-3.5" />
-                          <span>Authentication features will be added in a future update to provide user-specific form management.</span>
-                        </p>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </CardContent>
-            </Card>
-
-                {/* This section is intentionally empty as we've moved the Form Theme card to the top */}
-              </div>
+              <FormElements 
+                onFieldSelect={handleFieldSelect}
+              />
             </div>
-            
-            {/* Share Link Dialog */}
-            <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Share Form</DialogTitle>
-                  <DialogDescription>
-                    Anyone with this link can fill your form, but cannot edit it.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="flex items-center space-x-2 mt-2">
-                  <Input
-                    value={currentShareLink}
-                    readOnly
-                    className="flex-1"
-                  />
-                  <Button size="icon" variant="outline" onClick={copyShareLink}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <DialogFooter className="mt-4">
-                  <Button variant="secondary" onClick={() => setShareDialogOpen(false)}>Close</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
           </div>
         </div>
       </div>
+
+      <ShareDialog 
+        isOpen={shareDialogOpen}
+        shareLink={currentShareLink}
+        onClose={() => setShareDialogOpen(false)}
+        onCopy={copyShareLink}
+      />
     </div>
   );
 }

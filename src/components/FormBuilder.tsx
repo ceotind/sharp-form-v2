@@ -24,63 +24,90 @@ interface FormBuilderProps {
   onChange?: (fields: FormField[]) => void;
   editingField?: FormField | null;
   onFieldUpdate?: (field: FormField) => void;
+  onEditField?: (field: FormField) => void;
 }
 
 export function FormBuilder({ 
   initialFields = [], 
   onChange,
   editingField: externalEditingField,
-  onFieldUpdate
+  onFieldUpdate,
+  onEditField
 }: FormBuilderProps) {
   const createNewField = (type: FieldType): FormField => {
     const baseField = {
       id: crypto.randomUUID(),
-      type,
       label: `New ${type} field`,
+      description: '',
+      helpText: '',
       required: false,
+      placeholder: '',
+      defaultValue: '',
+      validation: {
+        required: false,
+        minLength: undefined,
+        maxLength: undefined,
+        pattern: undefined
+      }
     };
 
     switch (type) {
       case 'dropdown':
+        return {
+          ...baseField,
+          type: 'dropdown',
+          options: [
+            { id: crypto.randomUUID(), label: 'Option 1', value: 'option1' },
+            { id: crypto.randomUUID(), label: 'Option 2', value: 'option2' }
+          ],
+          multiple: false
+        };
       case 'radio':
         return {
           ...baseField,
-          type,
-          options: [{ id: crypto.randomUUID(), label: 'Option 1', value: 'option1' }],
+          type: 'radio',
+          options: [
+            { id: crypto.randomUUID(), label: 'Option 1', value: 'option1' },
+            { id: crypto.randomUUID(), label: 'Option 2', value: 'option2' }
+          ]
         };
       case 'checkbox':
         return {
           ...baseField,
-          type,
+          type: 'checkbox',
           checked: false,
+          options: [
+            { id: crypto.randomUUID(), label: 'Option 1', value: 'option1' },
+            { id: crypto.randomUUID(), label: 'Option 2', value: 'option2' }
+          ]
         };
       case 'text':
         return {
           ...baseField,
-          type,
+          type: 'text',
           minLength: undefined,
           maxLength: undefined,
-          pattern: undefined,
+          pattern: undefined
         };
       case 'textarea':
         return {
           ...baseField,
-          type,
-          minLength: undefined,
-          maxLength: undefined,
+          type: 'textarea',
           rows: 3,
+          minLength: undefined,
+          maxLength: undefined
         };
       case 'date':
         return {
           ...baseField,
-          type,
+          type: 'date',
           min: undefined,
-          max: undefined,
+          max: undefined
         };
       default:
-        // Default case for any other field type
         return {
-          ...baseField
+          ...baseField,
+          type: 'text'
         };
     }
   };

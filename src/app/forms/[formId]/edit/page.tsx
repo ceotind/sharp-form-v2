@@ -99,10 +99,25 @@ export default function EditFormPage({ params }: { params: { formId: string } })
   };
 
   const handleFieldUpdate = (updatedField: FormField) => {
+    if (!updatedField) return;
+    
     setFields(prev => prev.map(field => 
-      field.id === updatedField.id ? updatedField : field
+      field.id === updatedField.id ? {
+        ...field,
+        ...updatedField,
+        validation: {
+          ...field.validation,
+          ...updatedField.validation
+        }
+      } : field
     ));
     setEditingField(null);
+    
+    toast({
+      title: "Field updated",
+      description: `${updatedField.type.charAt(0).toUpperCase() + updatedField.type.slice(1)} field has been updated`,
+      variant: "default"
+    });
   };
 
   const handleSave = async () => {

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { FormField } from '@/types/form';
+import { FormField, FieldType, TextField, TextareaField, DropdownField, CheckboxField, RadioField, DateField } from '@/types/form';
 import { formElementRegistry } from './registry/FormElementRegistry';
 import { SortableField } from './SortableField';
+import { FormElementEditor } from './FormElementEditor';
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface FormBuilderProps {
@@ -29,6 +30,10 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
 }) => {
   const [fields, setFields] = useState<FormField[]>(initialFields.length > 0 ? initialFields : externalFields);
   const [availableElements] = useState(() => formElementRegistry.getAll());
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+
+  // Find the field being edited
+  const fieldBeingEdited = editingFieldId ? fields.find(f => f.id === editingFieldId) || null : null;
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -41,18 +46,89 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     setFields(externalFields);
   }, [externalFields]);
 
-  const handleAddField = (type: string) => {
-    const newField: FormField = {
+  const handleAddField = (type: FieldType) => {
+    const baseField = {
       id: `field-${Date.now()}`,
-      type,
       label: formElementRegistry.getConfig(type)?.name || `New ${type}`,
+      type,
+      required: false,
+      description: '',
+      helpText: '',
+      placeholder: '',
+      defaultValue: undefined,
       ...formElementRegistry.getConfig(type)?.defaultOptions,
     };
+
+    let newField: FormField;
+
+    switch (type) {
+      case 'text':
+      case 'email':
+      case 'url':
+      case 'tel':
+      case 'number':
+        newField = {
+          ...baseField,
+          type,
+        } as TextField;
+        break;
+
+      case 'textarea':
+        newField = {
+          ...baseField,
+          type: 'textarea',
+          rows: 3,
+        } as TextareaField;
+        break;
+
+      case 'dropdown':
+        newField = {
+          ...baseField,
+          type: 'dropdown',
+          options: [
+            { id: '1', label: 'Option 1', value: 'option1' },
+            { id: '2', label: 'Option 2', value: 'option2' },
+          ],
+          multiple: false,
+        } as DropdownField;
+        break;
+
+      case 'checkbox':
+        newField = {
+          ...baseField,
+          type: 'checkbox',
+          checked: false,
+        } as CheckboxField;
+        break;
+
+      case 'radio':
+        newField = {
+          ...baseField,
+          type: 'radio',
+          options: [
+            { id: '1', label: 'Option 1', value: 'option1' },
+            { id: '2', label: 'Option 2', value: 'option2' },
+          ],
+        } as RadioField;
+        break;
+
+      case 'date':
+        newField = {
+          ...baseField,
+          type: 'date',
+        } as DateField;
+        break;
+
+      default:
+        // This should never happen as we only allow valid field types
+        throw new Error(`Invalid field type: ${type}`);
+    }
 
     const newFields = [...fields, newField];
     setFields(newFields);
     onChange?.(newFields);
     onFieldSelect?.(newField);
+    setEditingFieldId(newField.id); // Open editor for the new field
   };
 
   const handleUpdateField = (id: string, updates: Record<string, any>) => {
@@ -90,7 +166,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
           <button
             key={element.type}
             type="button"
-            onClick={() => handleAddField(element.type)}
+            onClick={() => handleAddField(element.type as FieldType)}
             className="flex flex-col items-center justify-center p-4 rounded-lg border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors"
           >
             <div className="w-8 h-8 flex items-center justify-center text-blue-600 mb-2">
@@ -133,6 +209,16 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
           </SortableContext>
         </DndContext>
       </div>
+
+      <FormElementEditor
+        field={fieldBeingEdited}
+        onClose={() => setEditingFieldId(null)}
+        onUpdate={(updates) => {
+          if (fieldBeingEdited) {
+            handleUpdateField(fieldBeingEdited.id, updates);
+          }
+        }}
+      />
     </div>
   );
 };

@@ -6,6 +6,7 @@ export interface FormElementProps<T = any> {
   field: FormField;
   value: T;
   onChange: (value: T) => void;
+  onBlur?: () => void;
   error?: string;
   disabled?: boolean;
 }
@@ -24,7 +25,7 @@ export interface FormElementValidation {
   maxLength?: number;
   min?: number | string;
   max?: number | string;
-  custom?: (value: any) => string | boolean;
+  customValidation?: (value: any) => string | undefined;
 }
 
 export interface FormElementField {
@@ -33,7 +34,7 @@ export interface FormElementField {
   type: 'text' | 'number' | 'select' | 'checkbox' | 'radio' | 'textarea';
   options?: Array<{ label: string; value: string }>;
   required?: boolean;
-  inputType?: string; // HTML input type (e.g., 'date', 'email', 'password')
+  inputType?: string;
   description?: string;
 }
 

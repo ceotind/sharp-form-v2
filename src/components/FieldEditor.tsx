@@ -10,7 +10,16 @@ interface FieldEditorProps {
 }
 
 export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorProps) {
-  const [editedField, setEditedField] = useState<FormField>(field);
+  const [editedField, setEditedField] = useState<FormField>({
+    ...field,
+    validation: {
+      required: field.validation?.required ?? false,
+      minLength: field.validation?.minLength,
+      maxLength: field.validation?.maxLength,
+      pattern: field.validation?.pattern,
+      customValidation: field.validation?.customValidation
+    }
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validateField = (): boolean => {
@@ -35,16 +44,36 @@ export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorPr
       }
     }
 
+    if (editedField.validation) {
+      const { minLength, maxLength } = editedField.validation;
+      if (minLength !== undefined && maxLength !== undefined && minLength > maxLength) {
+        newErrors.validation = 'Minimum length cannot be greater than maximum length';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleChange = (key: string, value: any) => {
-    setEditedField(prev => ({ ...prev, [key]: value }));
+    setEditedField(prev => ({ 
+      ...prev, 
+      [key]: value 
+    }));
     // Clear error when field is edited
     if (errors[key]) {
       setErrors(prev => ({ ...prev, [key]: '' }));
     }
+  };
+
+  const handleValidationChange = (key: string, value: any) => {
+    setEditedField(prev => ({ 
+      ...prev, 
+      validation: {
+        ...(prev.validation || {}),
+        [key]: value
+      }
+    }));
   };
 
   const handleOptionChange = (index: number, key: string, value: string) => {
@@ -126,6 +155,19 @@ export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorPr
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={editedField.description || ''}
+              onChange={(e) => handleChange('description', e.target.value)}
+              placeholder="Enter field description"
+              rows={2}
+              className="mt-1 block w-full px-4 py-2.5 rounded-lg border border-gray-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Placeholder
             </label>
             <input
@@ -150,14 +192,94 @@ export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorPr
             />
           </div>
 
-          <div className="flex items-center p-4 bg-gray-50 rounded-lg">
-            <input
-              type="checkbox"
-              checked={editedField.required}
-              onChange={(e) => handleChange('required', e.target.checked)}
-              className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label className="ml-3 block text-sm font-medium text-gray-700">Required field</label>
+          {/* Validation Settings */}
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-sm font-medium text-gray-700">Validation Settings</h3>
+            
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                checked={editedField.validation?.required || false}
+                onChange={(e) => handleValidationChange('required', e.target.checked)}
+                className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label className="ml-3 block text-sm text-gray-700">Required field</label>
+            </div>
+
+            {(editedField.type === 'text' || editedField.type === 'textarea') && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">
+                      Min Length
+                    </label>
+                    <input
+                      type="number"
+                      value={editedField.validation?.minLength || ''}
+                      onChange={(e) => handleValidationChange('minLength', e.target.value ? Number(e.target.value) : undefined)}
+                      min={0}
+                      className="block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">
+                      Max Length
+                    </label>
+                    <input
+                      type="number"
+                      value={editedField.validation?.maxLength || ''}
+                      onChange={(e) => handleValidationChange('maxLength', e.target.value ? Number(e.target.value) : undefined)}
+                      min={0}
+                      className="block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Pattern (Regex)
+                  </label>
+                  <input
+                    type="text"
+                    value={editedField.validation?.pattern || ''}
+                    onChange={(e) => handleValidationChange('pattern', e.target.value)}
+                    placeholder="Enter regex pattern"
+                    className="block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </>
+            )}
+
+            {editedField.type === 'date' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Min Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editedField.min || ''}
+                    onChange={(e) => handleChange('min', e.target.value)}
+                    className="block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Max Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editedField.max || ''}
+                    onChange={(e) => handleChange('max', e.target.value)}
+                    className="block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
+            {errors.validation && (
+              <p className="mt-2 text-sm text-red-600">{errors.validation}</p>
+            )}
           </div>
 
           {'options' in editedField && (
@@ -235,4 +357,4 @@ export function FieldEditor({ field, onSave, onCancel, onDelete }: FieldEditorPr
       </div>
     </motion.div>
   );
-} 
+}

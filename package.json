@@ -42,6 +42,7 @@
     "zod": "^3"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.16",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
@@ -49,6 +50,7 @@
     "eslint": "^8",
     "eslint-config-next": "14.1.0",
     "glob": "^10",
+    "lodash": "^4.17.21",
     "lru-cache": "^10",
     "postcss": "^8",
     "rimraf": "^5",

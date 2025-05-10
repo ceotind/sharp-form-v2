@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { FormField } from '@/types/form';
 import { BaseFormElement } from './BaseFormElement';
-import { getDefaultFieldValues, validateFormField } from './utils/formElementUtils';
+import { validateForm, validateField, getInitialValues } from './utils/validation';
 
 interface FormProps {
   fields: FormField[];
-  onSubmit: (values: Record<string, any>) => void;
+  onSubmit: (values: Record<string, any>) => void | Promise<void>;
   initialValues?: Record<string, any>;
   onChange?: (values: Record<string, any>) => void;
   submitText?: string;
@@ -24,14 +24,29 @@ export const Form: React.FC<FormProps> = ({
 }) => {
   const [values, setValues] = useState<Record<string, any>>(initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
 
   // Initialize form with default values
   useEffect(() => {
     if (fields.length > 0 && Object.keys(initialValues).length === 0) {
-      setValues(getDefaultFieldValues(fields));
+      setValues(getInitialValues(fields));
     }
   }, [fields, initialValues]);
+
+  // Validate field on blur
+  const handleBlur = (fieldId: string) => {
+    setTouched(prev => ({ ...prev, [fieldId]: true }));
+    const field = fields.find(f => f.id === fieldId);
+    if (field) {
+      const error = validateField(field, values[fieldId]);
+      setErrors(prev => ({
+        ...prev,
+        [fieldId]: error || ''
+      }));
+    }
+  };
 
   const handleChange = (fieldId: string, value: any) => {
     const newValues = {
@@ -42,44 +57,45 @@ export const Form: React.FC<FormProps> = ({
     setValues(newValues);
     onChange?.(newValues);
 
-    // Clear error when user starts typing
-    if (errors[fieldId]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[fieldId];
-        return newErrors;
-      });
+    // If the field has been touched, validate on change
+    if (touched[fieldId]) {
+      const field = fields.find(f => f.id === fieldId);
+      if (field) {
+        const error = validateField(field, value);
+        setErrors(prev => ({
+          ...prev,
+          [fieldId]: error || ''
+        }));
+      }
     }
   };
 
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-    let isValid = true;
+  const validateFormData = (): boolean => {
+    setIsValidating(true);
+    try {
+      const result = validateForm(fields, values);
+      setErrors(result.errors);
+      
+      // Mark all fields as touched when form is submitted
+      const newTouched = fields.reduce((acc, field) => {
+        acc[field.id] = true;
+        return acc;
+      }, {} as Record<string, boolean>);
+      setTouched(newTouched);
 
-    fields.forEach((field) => {
-      if (field.required && (values[field.id] === undefined || values[field.id] === '')) {
-        newErrors[field.id] = 'This field is required';
-        isValid = false;
-      } else {
-        const error = validateFormField(field, values[field.id]);
-        if (error) {
-          newErrors[field.id] = error;
-          isValid = false;
-        }
-      }
-    });
-
-    setErrors(newErrors);
-    return isValid;
+      return result.isValid;
+    } finally {
+      setIsValidating(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (validateForm()) {
+    if (validateFormData()) {
       setIsSubmitting(true);
       try {
-        onSubmit(values);
+        await onSubmit(values);
       } finally {
         setIsSubmitting(false);
       }
@@ -87,14 +103,19 @@ export const Form: React.FC<FormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className={`space-y-6 ${className}`}>
+    <form 
+      onSubmit={handleSubmit} 
+      className={`space-y-6 ${className}`}
+      noValidate
+    >
       {fields.map((field) => (
         <div key={field.id}>
           <BaseFormElement
             element={field}
             value={values[field.id]}
             onChange={(value) => handleChange(field.id, value)}
-            error={errors[field.id]}
+            onBlur={() => handleBlur(field.id)}
+            error={touched[field.id] ? errors[field.id] : undefined}
             disabled={disabled || isSubmitting}
           />
         </div>
@@ -103,10 +124,12 @@ export const Form: React.FC<FormProps> = ({
       <div>
         <button
           type="submit"
-          disabled={disabled || isSubmitting}
+          disabled={disabled || isSubmitting || isValidating}
           className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isSubmitting ? 'Submitting...' : submitText}
+          {isSubmitting ? 'Submitting...' : 
+           isValidating ? 'Validating...' : 
+           submitText}
         </button>
       </div>
     </form>

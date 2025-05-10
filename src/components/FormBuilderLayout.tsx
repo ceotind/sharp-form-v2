@@ -71,7 +71,11 @@ const FormBuilderLayout = ({
                         variant="ghost"
                         size="sm"
                         className="h-6 w-6 p-0"
-                        onClick={() => onEditForm?.(form.id)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onEditForm?.(form.id);
+                        }}
                       >
                         <Pencil className="h-3 w-3" />
                       </Button>
@@ -79,7 +83,11 @@ const FormBuilderLayout = ({
                         variant="ghost"
                         size="sm"
                         className="h-6 w-6 p-0 text-red-500 hover:text-red-600"
-                        onClick={() => onDeleteForm?.(form.id)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onDeleteForm?.(form.id);
+                        }}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>

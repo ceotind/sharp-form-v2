@@ -1,70 +1,103 @@
 // Field Types
-export type FieldType = 'text' | 'textarea' | 'dropdown' | 'checkbox' | 'radio' | 'date' | string;
+export type FieldType = 'text' | 'textarea' | 'dropdown' | 'checkbox' | 'radio' | 'date' | 'email' | 'number' | 'url' | 'tel';
+
+// Option interface for dropdown, radio and checkbox fields
+export interface Option {
+  id: string;
+  value: string;
+  label: string;
+}
+
+// Validation interface
+export interface ValidationRules {
+  required: boolean;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  min?: string | number;
+  max?: string | number;
+  customValidation?: (value: any) => string | undefined;
+}
+
+// Error messages interface
+export interface ErrorMessages {
+  required?: string;
+  minLength?: string;
+  maxLength?: string;
+  pattern?: string;
+  min?: string;
+  max?: string;
+  type?: string;
+  customValidation?: string;
+}
 
 // Base field interface with common properties
 export interface BaseField {
   id: string;
   type: FieldType;
   label: string;
-  required?: boolean;
-  placeholder?: string;
+  description?: string;
   helpText?: string;
-  [key: string]: any; // Allow for custom properties
+  placeholder?: string;
+  required: boolean;
+  defaultValue?: any;
+  validation?: ValidationRules;
+  errorMessages?: ErrorMessages;
 }
 
 // Text field interface
-interface TextField extends BaseField {
-  type: 'text';
+export interface TextField extends BaseField {
+  type: 'text' | 'email' | 'url' | 'tel' | 'number';
   minLength?: number;
   maxLength?: number;
   pattern?: string;
 }
 
 // Textarea field interface
-interface TextareaField extends BaseField {
+export interface TextareaField extends BaseField {
   type: 'textarea';
+  rows?: number;
   minLength?: number;
   maxLength?: number;
-  rows?: number;
-}
-
-// Option interface for dropdown and radio fields
-interface Option {
-  id: string;
-  label: string;
-  value: string;
 }
 
 // Dropdown field interface
-interface DropdownField extends BaseField {
+export interface DropdownField extends BaseField {
   type: 'dropdown';
   options: Option[];
   multiple?: boolean;
 }
 
 // Checkbox field interface
-interface CheckboxField extends BaseField {
+export interface CheckboxField extends BaseField {
   type: 'checkbox';
+  options?: Option[];
   checked?: boolean;
 }
 
 // Radio field interface
-interface RadioField extends BaseField {
+export interface RadioField extends BaseField {
   type: 'radio';
   options: Option[];
 }
 
 // Date field interface
-interface DateField extends BaseField {
+export interface DateField extends BaseField {
   type: 'date';
-  min?: string;
-  max?: string;
+  minDate?: string;
+  maxDate?: string;
+  validation?: ValidationRules & {
+    minDate?: string;
+    maxDate?: string;
+  };
+  errorMessages?: ErrorMessages & {
+    minDate?: string;
+    maxDate?: string;
+  };
 }
 
 // Union type for all field types
-export type FormField = BaseField & {
-  [key: string]: any;
-};
+export type FormField = TextField | TextareaField | DropdownField | CheckboxField | RadioField | DateField;
 
 // Form interface
 export interface Form {
@@ -72,21 +105,14 @@ export interface Form {
   title: string;
   description?: string;
   fields: FormField[];
-  createdAt: Date | any; // Allow Firestore timestamp
-  updatedAt: Date | any; // Allow Firestore timestamp
+  createdAt: Date | any;
+  updatedAt: Date | any;
   published: boolean;
-  createdBy: string;
+  createdBy?: string;
   responseCount?: number;
   lastResponseAt?: Date | any;
-  customSlug?: string; // For URL customization
-  settings?: {
-    allowMultipleResponses: boolean;
-    customSuccessMessage: string;
-    customErrorMessage: string;
-    themeBackground?: string;
-    textColor?: string;
-    accentColor?: string;
-  };
+  customSlug?: string;
+  settings?: FormSettings;
 }
 
 // Form Response interface
@@ -101,17 +127,17 @@ export interface FormResponse {
   submittedBy?: string;
   metadata?: {
     userAgent?: string;
-    timestamp?: any; // Firestore timestamp
+    timestamp?: any;
     [key: string]: any;
   };
 }
 
 // Form Settings interface
 export interface FormSettings {
-  allowMultipleResponses?: boolean;
+  allowMultipleResponses: boolean;
+  customSuccessMessage: string;
+  customErrorMessage: string;
   responseLimit?: number;
-  customSuccessMessage?: string;
-  customErrorMessage?: string;
   theme?: 'light' | 'dark';
   submitButtonText?: string;
   successMessage?: string;
@@ -119,5 +145,4 @@ export interface FormSettings {
   themeBackground?: string;
   textColor?: string;
   accentColor?: string;
-  // Add more theme-related fields as needed
 }
