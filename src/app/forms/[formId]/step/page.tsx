@@ -1,14 +1,14 @@
-'use client';
+import StepForm from './StepForm';
 
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Form, FormField } from '@/types/form';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+export default function FormStepPage({
+  params,
+}: {
+  params: { formId: string };
+}) {
+  return <StepForm formId={params.formId} />;
 
-export default function FormStepPage({ params }: { params: { formId: string } }) {
+export default function FormStepPage(props: Props) {
+  const { params } = props;
   const router = useRouter();
   const [form, setForm] = useState<Form | null>(null);
   const [loading, setLoading] = useState(true);

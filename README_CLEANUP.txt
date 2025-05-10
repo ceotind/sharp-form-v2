@@ -1,0 +1,16 @@
+Cleanup plan:
+- All form builder related components should be in src/components/form-builder.
+- Remove duplicates and misplaced files from src/components and src/components/form-elements.
+- The following files will be deleted:
+  - src/components/FormPreview.tsx
+  - src/components/FormProperties.tsx
+  - src/components/FormBuilder.tsx
+  - src/components/SortableField.tsx
+  - src/components/FormBuilderLayout.tsx
+  - src/components/FieldEditor.tsx
+  - src/components/FieldRenderer.tsx
+  - src/components/FormsSidebar.tsx
+  - src/components/form-elements/FormElementEditor.tsx
+  - src/components/form-elements/SortableField.tsx
+  - src/components/form-elements/README.md (if not needed)
+- All usage should point to src/components/form-builder/ or src/components/form-elements/elements/ as appropriate.
